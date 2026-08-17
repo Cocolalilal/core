@@ -443,6 +443,19 @@ internal class DataStoreManagerImpl(
         }
     }
 
+    override val showVideoSubtitles: Flow<String> =
+        settingsDataStore.data.map { preferences ->
+            preferences[SHOW_VIDEO_SUBTITLES] ?: FALSE
+        }
+
+    override suspend fun setShowVideoSubtitles(show: Boolean) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[SHOW_VIDEO_SUBTITLES] = if (show) TRUE else FALSE
+            }
+        }
+    }
+
     override val lyricsProvider =
         settingsDataStore.data.map { preferences ->
             preferences[LYRICS_PROVIDER] ?: SIMPMUSIC
@@ -1514,6 +1527,7 @@ internal class DataStoreManagerImpl(
         val MAX_SONG_CACHE_SIZE = intPreferencesKey("maxSongCacheSize")
         val WATCH_VIDEO_INSTEAD_OF_PLAYING_AUDIO =
             stringPreferencesKey("watch_video_instead_of_playing_audio")
+        val SHOW_VIDEO_SUBTITLES = stringPreferencesKey("show_video_subtitles")
         val VIDEO_QUALITY = stringPreferencesKey("video_quality")
         val PLAYER_VOLUME = floatPreferencesKey("player_volume")
         val SPDC = stringPreferencesKey("sp_dc")

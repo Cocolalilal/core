@@ -849,6 +849,7 @@ internal class MediaServiceHandlerImpl(
 
     override fun stopProgressUpdate() {
         progressJob?.cancel()
+        _simpleMediaState.value = SimpleMediaState.Progress(player.currentPosition)
         Logger.w(TAG, "stopProgressUpdate: ${progressJob?.isActive}")
     }
 
@@ -2268,6 +2269,7 @@ internal class MediaServiceHandlerImpl(
                     loadJob?.join()
                     resetCrossfade()
                     player.seekTo(index, savedPosition)
+                    _simpleMediaState.value = SimpleMediaState.Progress(savedPosition)
                 }
             }
         }

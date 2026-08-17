@@ -312,6 +312,10 @@ interface DataStoreManager {
 
     suspend fun setYoutubeSubtitleLanguage(language: String)
 
+    val showVideoSubtitles: Flow<String>
+
+    suspend fun setShowVideoSubtitles(show: Boolean)
+
     val helpBuildLyricsDatabase: Flow<String>
 
     suspend fun setHelpBuildLyricsDatabase(help: Boolean)
