@@ -154,9 +154,9 @@ interface DataStoreManager {
 
     suspend fun setSpotifyLyrics(spotifyLyrics: Boolean)
 
-    val spotifyCanvas: Flow<String>
+    val animatedNowPlayingBackground: Flow<String>
 
-    suspend fun setSpotifyCanvas(spotifyCanvas: Boolean)
+    suspend fun setAnimatedNowPlayingBackground(enabled: Boolean)
 
     val spotifyClientToken: Flow<String>
 

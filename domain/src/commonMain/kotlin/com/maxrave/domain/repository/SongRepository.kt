@@ -30,7 +30,7 @@ interface SongRepository {
 
     fun getLikedSongs(): Flow<List<SongEntity>>
 
-    fun getCanvasSong(max: Int): Flow<List<SongEntity>>
+    fun getAnimatedArtworkSongs(max: Int): Flow<List<SongEntity>>
 
     fun getSongById(id: String): Flow<SongEntity?>
 

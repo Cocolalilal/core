@@ -84,7 +84,7 @@ fun MediaPlayerView(
     screenSize: ScreenSizeInfo,
     cropToBounds: Boolean = false,
 ) {
-    val canvasCache: SimpleCache = koinInject<SimpleCache>(named(Config.CANVAS_CACHE))
+    val canvasCache: SimpleCache = koinInject<SimpleCache>(named(Config.ANIMATED_ARTWORK_CACHE))
 
     var widthPx by rememberSaveable {
         mutableIntStateOf(screenSize.wPX)

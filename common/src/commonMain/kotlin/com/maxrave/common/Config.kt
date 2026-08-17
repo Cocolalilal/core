@@ -26,7 +26,7 @@ object Config {
 
     const val PLAYER_CACHE = "playerCache"
     const val DOWNLOAD_CACHE = "downloadCache"
-    const val CANVAS_CACHE = "canvasCache"
+    const val ANIMATED_ARTWORK_CACHE = "animated_artwork_cache"
     const val SERVICE_SCOPE = "serviceScope"
     const val MAIN_PLAYER = "mainPlayer"
     const val SECONDARY_PLAYER = "secondaryPlayer"

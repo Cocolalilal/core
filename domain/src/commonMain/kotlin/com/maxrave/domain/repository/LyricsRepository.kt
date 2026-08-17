@@ -4,13 +4,12 @@ import com.maxrave.domain.data.entities.LyricsEntity
 import com.maxrave.domain.data.entities.TranslatedLyricsEntity
 import com.maxrave.domain.data.model.browse.album.Track
 import com.maxrave.domain.data.model.browse.artist.ArtistLogo
-import com.maxrave.domain.data.model.canvas.CanvasResult
 import com.maxrave.domain.data.model.metadata.Lyrics
 import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.utils.Resource
 import kotlinx.coroutines.flow.Flow
 
-interface LyricsCanvasRepository {
+interface LyricsRepository {
     fun getSavedLyrics(videoId: String): Flow<LyricsEntity?>
 
     suspend fun insertLyrics(lyricsEntity: LyricsEntity)
@@ -31,22 +30,6 @@ interface LyricsCanvasRepository {
         preferLang: String,
         videoId: String,
     ): Flow<Resource<Pair<Lyrics, Lyrics?>>>
-
-    fun getCanvas(
-        dataStoreManager: DataStoreManager,
-        videoId: String,
-        duration: Int,
-    ): Flow<Resource<CanvasResult>>
-
-    suspend fun updateCanvasUrl(
-        videoId: String,
-        canvasUrl: String,
-    )
-
-    suspend fun updateCanvasThumbUrl(
-        videoId: String,
-        canvasThumbUrl: String,
-    )
 
     fun getSpotifyLyrics(
         dataStoreManager: DataStoreManager,

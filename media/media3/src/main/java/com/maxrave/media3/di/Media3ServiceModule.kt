@@ -41,7 +41,7 @@ import androidx.media3.extractor.mp4.FragmentedMp4Extractor
 import androidx.media3.extractor.mp4.Mp4Extractor
 import androidx.media3.extractor.text.DefaultSubtitleParserFactory
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
-import com.maxrave.common.Config.CANVAS_CACHE
+import com.maxrave.common.Config.ANIMATED_ARTWORK_CACHE
 import com.maxrave.common.Config.DOWNLOAD_CACHE
 import com.maxrave.common.Config.MAIN_PLAYER
 import com.maxrave.common.Config.PLAYER_CACHE
@@ -129,7 +129,7 @@ private val mediaServiceModule =
             )
         }
         // Spotify Canvas Cache
-        single<SimpleCache>(qualifier = named(CANVAS_CACHE), createdAtStart = true) {
+        single<SimpleCache>(qualifier = named(ANIMATED_ARTWORK_CACHE), createdAtStart = true) {
             provideSimpleCache(
                 context = androidContext(),
                 cacheName = "spotifyCanvas",
@@ -226,7 +226,7 @@ private val mediaServiceModule =
             CacheRepositoryImpl(
                 playerCache = get(named(PLAYER_CACHE)),
                 downloadCache = get(named(DOWNLOAD_CACHE)),
-                canvasCache = get(named(CANVAS_CACHE)),
+                canvasCache = get(named(ANIMATED_ARTWORK_CACHE)),
             )
         }
     }

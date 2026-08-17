@@ -101,9 +101,9 @@ internal class SongRepositoryImpl(
             )
         }.flowOn(Dispatchers.IO)
 
-    override fun getCanvasSong(max: Int): Flow<List<SongEntity>> =
+    override fun getAnimatedArtworkSongs(max: Int): Flow<List<SongEntity>> =
         flow {
-            emit(localDataSource.getCanvasSong(max))
+            emit(localDataSource.getAnimatedArtworkSongs(max))
         }.flowOn(Dispatchers.IO)
 
     override fun getSongById(id: String): Flow<SongEntity?> =

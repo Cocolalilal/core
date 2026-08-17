@@ -10,7 +10,7 @@ import com.maxrave.data.repository.CommonRepositoryImpl
 import com.maxrave.data.repository.HomeRepositoryImpl
 import com.maxrave.data.repository.ImportRepositoryImpl
 import com.maxrave.data.repository.LocalPlaylistRepositoryImpl
-import com.maxrave.data.repository.LyricsCanvasRepositoryImpl
+import com.maxrave.data.repository.LyricsRepositoryImpl
 import com.maxrave.data.repository.PlaylistRepositoryImpl
 import com.maxrave.data.repository.PodcastRepositoryImpl
 import com.maxrave.data.repository.SearchRepositoryImpl
@@ -25,7 +25,7 @@ import com.maxrave.domain.repository.CommonRepository
 import com.maxrave.domain.repository.HomeRepository
 import com.maxrave.domain.repository.ImportRepository
 import com.maxrave.domain.repository.LocalPlaylistRepository
-import com.maxrave.domain.repository.LyricsCanvasRepository
+import com.maxrave.domain.repository.LyricsRepository
 import com.maxrave.domain.repository.PlaylistRepository
 import com.maxrave.domain.repository.PodcastRepository
 import com.maxrave.domain.repository.SearchRepository
@@ -67,8 +67,8 @@ val repositoryModule =
             LocalPlaylistRepositoryImpl(get(), get())
         }
 
-        single<LyricsCanvasRepository>(createdAtStart = true) {
-            LyricsCanvasRepositoryImpl(get(), get(), get(), get(), get())
+        single<LyricsRepository>(createdAtStart = true) {
+            LyricsRepositoryImpl(get(), get(), get(), get(), get())
         }
 
         single<PlaylistRepository>(createdAtStart = true) {

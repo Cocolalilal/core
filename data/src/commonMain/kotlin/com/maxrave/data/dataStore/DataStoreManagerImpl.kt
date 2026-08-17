@@ -565,20 +565,20 @@ internal class DataStoreManagerImpl(
         }
     }
 
-    override val spotifyCanvas: Flow<String> =
+    override val animatedNowPlayingBackground: Flow<String> =
         settingsDataStore.data.map { preferences ->
-            preferences[SPOTIFY_CANVAS] ?: FALSE
+            preferences[ANIMATED_NOW_PLAYING_BACKGROUND] ?: TRUE
         }
 
-    override suspend fun setSpotifyCanvas(spotifyCanvas: Boolean) {
+    override suspend fun setAnimatedNowPlayingBackground(enabled: Boolean) {
         withContext(Dispatchers.IO) {
-            if (spotifyCanvas) {
+            if (enabled) {
                 settingsDataStore.edit { settings ->
-                    settings[SPOTIFY_CANVAS] = TRUE
+                    settings[ANIMATED_NOW_PLAYING_BACKGROUND] = TRUE
                 }
             } else {
                 settingsDataStore.edit { settings ->
-                    settings[SPOTIFY_CANVAS] = FALSE
+                    settings[ANIMATED_NOW_PLAYING_BACKGROUND] = FALSE
                 }
             }
         }
@@ -1518,7 +1518,7 @@ internal class DataStoreManagerImpl(
         val PLAYER_VOLUME = floatPreferencesKey("player_volume")
         val SPDC = stringPreferencesKey("sp_dc")
         val SPOTIFY_LYRICS = stringPreferencesKey("spotify_lyrics")
-        val SPOTIFY_CANVAS = stringPreferencesKey("spotify_canvas")
+        val ANIMATED_NOW_PLAYING_BACKGROUND = stringPreferencesKey("animated_now_playing_background")
         val SPOTIFY_CLIENT_TOKEN = stringPreferencesKey("spotify_client_token")
         val SPOTIFY_CLIENT_TOKEN_EXPIRES = longPreferencesKey("spotify_client_token_expires")
         val SPOTIFY_PERSONAL_TOKEN = stringPreferencesKey("spotify_personal_token")

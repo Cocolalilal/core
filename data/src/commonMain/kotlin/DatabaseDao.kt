@@ -392,7 +392,7 @@ interface DatabaseDao {
     ): List<SongEntity>
 
     @Query("SELECT * FROM song WHERE canvasThumbUrl IS NOT NULL ORDER BY totalPlayTime DESC LIMIT :max")
-    suspend fun getCanvasSong(max: Int): List<SongEntity>
+    suspend fun getAnimatedArtworkSongs(max: Int): List<SongEntity>
 
     @Query("SELECT videoId FROM song WHERE videoId IN (:primaryKeyList) AND downloadState = 3")
     fun getDownloadedVideoIdByListVideoId(primaryKeyList: List<String>): Flow<List<String>>

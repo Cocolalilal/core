@@ -19,7 +19,7 @@ internal class CacheRepositoryImpl(
             Config.DOWNLOAD_CACHE -> {
                 downloadCache.cacheSpace
             }
-            Config.CANVAS_CACHE -> {
+            Config.ANIMATED_ARTWORK_CACHE -> {
                 canvasCache.cacheSpace
             }
             else -> 0L
@@ -37,7 +37,7 @@ internal class CacheRepositoryImpl(
                     downloadCache.removeResource(key)
                 }
             }
-            Config.CANVAS_CACHE -> {
+            Config.ANIMATED_ARTWORK_CACHE -> {
                 canvasCache.keys.forEach { key ->
                     canvasCache.removeResource(key)
                 }
@@ -54,7 +54,7 @@ internal class CacheRepositoryImpl(
             Config.DOWNLOAD_CACHE -> {
                 downloadCache.keys.toList()
             }
-            Config.CANVAS_CACHE -> {
+            Config.ANIMATED_ARTWORK_CACHE -> {
                 canvasCache.keys.toList()
             }
             else -> emptyList()

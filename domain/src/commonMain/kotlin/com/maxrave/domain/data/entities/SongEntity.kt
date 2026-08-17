@@ -1,5 +1,6 @@
 package com.maxrave.domain.data.entities
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.maxrave.domain.data.entities.DownloadState.STATE_NOT_DOWNLOADED
@@ -30,8 +31,8 @@ data class SongEntity(
     val favoriteAt: LocalDateTime? = now(),
     val downloadedAt: LocalDateTime? = now(),
     val inLibrary: LocalDateTime = now(),
-    val canvasUrl: String? = null,
-    val canvasThumbUrl: String? = null,
+    @ColumnInfo(name = "canvasUrl") val animatedArtworkUrl: String? = null,
+    @ColumnInfo(name = "canvasThumbUrl") val animatedArtworkThumbUrl: String? = null,
 ) : RecentlyType {
     override fun objectType(): RecentlyType.Type = RecentlyType.Type.SONG
 }
