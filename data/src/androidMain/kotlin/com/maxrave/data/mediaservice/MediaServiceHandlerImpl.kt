@@ -1122,16 +1122,65 @@ internal class MediaServiceHandlerImpl(
         from: Int,
         to: Int,
     ) {
-//        if (from < to) {
-//            for (i in from until to) {
-//                moveItemDown(i)
-//            }
-//        } else {
-//            for (i in from downTo to + 1) {
-//                moveItemUp(i)
-//            }
-//        }
+        if (from == to) return
+        val currentTracks = _queueData.value.data.listTracks
+        if (from !in currentTracks.indices || to !in currentTracks.indices) return
         moveMediaItem(from, to)
+        _queueData.update { current ->
+            val list = current.data.listTracks.toMutableList()
+            if (from in list.indices && to in list.indices) {
+                val item = list.removeAt(from)
+                list.add(to, item)
+                current.copy(
+                    data = current.data.copy(listTracks = list),
+                )
+            } else {
+                current
+            }
+        }
+        _currentSongIndex.value = player.currentMediaItemIndex
+    }
+
+    override suspend fun updateQueueOrder(newTracks: List<Track>) {
+        if (newTracks.isEmpty()) return
+        val currentList = _queueData.value.data.listTracks.toMutableList()
+        if (currentList.size != newTracks.size) {
+            _queueData.update { it.copy(data = it.data.copy(listTracks = newTracks)) }
+            return
+        }
+        for (i in newTracks.indices) {
+            val targetTrack = newTracks[i]
+            val fromIndex = currentList.subList(i, currentList.size).indexOfFirst { it.videoId == targetTrack.videoId }
+            if (fromIndex >= 0) {
+                val actualFromIndex = fromIndex + i
+                if (actualFromIndex != i) {
+                    moveMediaItem(actualFromIndex, i)
+                    val item = currentList.removeAt(actualFromIndex)
+                    currentList.add(i, item)
+                }
+            }
+        }
+        _queueData.update { it.copy(data = it.data.copy(listTracks = newTracks)) }
+        _currentSongIndex.value = player.currentMediaItemIndex
+    }
+
+    override suspend fun shuffleQueue() {
+        val currentTracks = _queueData.value.data.listTracks
+        if (currentTracks.size <= 1) return
+        val currentIdx = currentOrderIndex().coerceIn(0, currentTracks.size - 1)
+        val newList = currentTracks.toMutableList()
+        val indicesToShuffle =
+            if (currentIdx < currentTracks.size - 1) {
+                ((currentIdx + 1) until currentTracks.size).toList()
+            } else {
+                (0 until currentTracks.size).filter { it != currentIdx }
+            }
+        if (indicesToShuffle.size <= 1) return
+        val shuffledTracks = indicesToShuffle.map { currentTracks[it] }.shuffled()
+        indicesToShuffle.forEachIndexed { i, originalIndex ->
+            newList[originalIndex] = shuffledTracks[i]
+        }
+        updateQueueOrder(newList)
     }
 
     override fun resetCrossfade() {

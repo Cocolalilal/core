@@ -13,6 +13,8 @@ data class EditPlaylistBody(
     data class Action(
         val action: String = "ACTION_SET_PLAYLIST_NAME",
         val playlistName: String? = null,
+        val playlistDescription: String? = null,
+        val playlistPrivacy: String? = null,
         val addedVideoId: String? = null,
         val removedVideoId: String? = null,
         val setVideoId: String? = null,

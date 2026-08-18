@@ -44,6 +44,28 @@ interface DataStoreManager {
     suspend fun setMoodAndGenresCache(json: String)
 
     /**
+     * Serialized default Home feed result, allowing the Home screen to paint instantly on startup
+     * without a blank screen or connection error.
+     */
+    val homeFeedCache: Flow<String?>
+
+    suspend fun setHomeFeedCache(json: String)
+
+    /**
+     * Serialized New Release items for instant hero carousel display on Home tab startup.
+     */
+    val newReleaseCache: Flow<String?>
+
+    suspend fun setNewReleaseCache(json: String)
+
+    /**
+     * JSON-serialized map of playlistId -> customCoverUri chosen by the user in Replay.
+     */
+    val customPlaylistCovers: Flow<String?>
+
+    suspend fun setCustomPlaylistCover(playlistId: String, uri: String?)
+
+    /**
      * Cover art resolved per browse category, keyed by its params. The category list itself
      * carries no artwork, so each cover costs one full category browse — worth remembering on
      * disk rather than paying again every time the search screen opens.
@@ -397,6 +419,15 @@ interface DataStoreManager {
     suspend fun setAutoBackupMaxFiles(max: Int)
 
     val autoBackupLastTime: Flow<Long>
+
+    val pinnedItems: Flow<List<com.maxrave.domain.data.model.pinned.PinnedItem>>
+    suspend fun addPin(item: com.maxrave.domain.data.model.pinned.PinnedItem)
+    suspend fun removePin(id: String)
+    suspend fun updatePins(items: List<com.maxrave.domain.data.model.pinned.PinnedItem>)
+    fun isPinned(targetId: String): Flow<Boolean>
+
+    val isLibraryGridView: Flow<Boolean>
+    suspend fun setLibraryGridView(isGrid: Boolean)
 
     suspend fun setAutoBackupLastTime(time: Long)
 

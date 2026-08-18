@@ -25,6 +25,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 
@@ -54,9 +55,10 @@ internal class HomeRepositoryImpl(
      * Same posture as the Room converters: a cache written by an older build must not crash the
      * app after the model gains a field, so unknown keys are dropped rather than rejected.
      */
-    private val moodJson =
+    private val json =
         Json {
             ignoreUnknownKeys = true
+            explicitNulls = false
         }
 
     override fun getHomeData(
@@ -64,7 +66,17 @@ internal class HomeRepositoryImpl(
         viewString: String,
         songString: String,
     ): Flow<Resource<Pair<String?, List<HomeItem>>>> =
-        flow {
+        flow<Resource<Pair<String?, List<HomeItem>>>> {
+            var cachedHome: List<HomeItem>? = null
+            if (params == null) {
+                cachedHome =
+                    dataStoreManager.homeFeedCache
+                        .first()
+                        ?.let { runCatching { json.decodeFromString<List<HomeItem>>(it) }.getOrNull() }
+                if (!cachedHome.isNullOrEmpty()) {
+                    emit(Resource.Success(null to cachedHome))
+                }
+            }
             runCatching {
                 val limit = dataStoreManager.homeLimit.first()
                 youTube
@@ -170,48 +182,32 @@ internal class HomeRepositoryImpl(
                                 songString,
                             ),
                         )
-//                        var count = 0
-//                        while (count < limit && continueParam != null) {
-//                            youTube
-//                                .customQuery(browseId = "", continuation = continueParam)
-//                                .onSuccess { response ->
-//                                    continueParam =
-//                                        response.continuationContents
-//                                            ?.sectionListContinuation
-//                                            ?.continuations
-//                                            ?.get(
-//                                                0,
-//                                            )?.nextContinuationData
-//                                            ?.continuation
-//                                    Logger.d("Repository", "continueParam: $continueParam")
-//                                    val dataContinue =
-//                                        response.continuationContents?.sectionListContinuation?.contents
-//                                    list.addAll(
-//                                        parseMixedContent(
-//                                            dataContinue,
-//                                            viewString,
-//                                            songString,
-//                                        ),
-//                                    )
-//                                    count++
-//                                    Logger.d("Repository", "count: $count")
-//                                }.onFailure {
-//                                    Logger.e("Repository", "Error: ${it.message}")
-//                                    count++
-//                                }
-//                        }
                         Logger.d("Repository", "List size: ${list.size}")
-                        emit(Resource.Success(continueParam to list.toList()))
+                        val parsedList = list.toList()
+                        if (params == null && parsedList.isNotEmpty()) {
+                            runCatching {
+                                dataStoreManager.setHomeFeedCache(json.encodeToString(parsedList))
+                            }
+                        }
+                        emit(Resource.Success(continueParam to parsedList))
                     }.onFailure { error ->
-                        emit(Resource.Error<Pair<String?, List<HomeItem>>>(error.message.toString()))
+                        if (cachedHome.isNullOrEmpty()) {
+                            emit(Resource.Error<Pair<String?, List<HomeItem>>>(error.message.toString()))
+                        }
                     }
+            }.onFailure { error ->
+                if (cachedHome.isNullOrEmpty()) {
+                    emit(Resource.Error<Pair<String?, List<HomeItem>>>(error.message.toString()))
+                }
             }
+        }.catch { e ->
+            emit(Resource.Error(e.message ?: "Failed to fetch home data"))
         }.flowOn(Dispatchers.IO)
 
     override fun getHomeDataContinue(
         continueParam: String,
         viewString: String,
-        songString: String
+        songString: String,
     ): Flow<Resource<Pair<String?, List<HomeItem>>>> = flow {
         youTube
             .customQuery(browseId = "", continuation = continueParam)
@@ -237,6 +233,8 @@ internal class HomeRepositoryImpl(
             }.onFailure {
                 emit(Resource.Error<Pair<String?, List<HomeItem>>>(it.message.toString()))
             }
+    }.catch { e ->
+        emit(Resource.Error(e.message ?: "Failed to continue home data"))
     }.flowOn(Dispatchers.IO)
 
     override fun getNewRelease(
@@ -244,13 +242,30 @@ internal class HomeRepositoryImpl(
         musicVideoString: String,
     ): Flow<Resource<List<HomeItem>>> =
         flow {
+            val cached =
+                dataStoreManager.newReleaseCache
+                    .first()
+                    ?.let { runCatching { json.decodeFromString<List<HomeItem>>(it) }.getOrNull() }
+            if (!cached.isNullOrEmpty()) {
+                emit(Resource.Success<List<HomeItem>>(cached))
+            }
             youTube
                 .newRelease()
                 .onSuccess { result ->
-                    emit(Resource.Success<List<HomeItem>>(parseNewRelease(result, newReleaseString, musicVideoString)))
+                    val list = parseNewRelease(result, newReleaseString, musicVideoString)
+                    if (list.isNotEmpty()) {
+                        runCatching {
+                            dataStoreManager.setNewReleaseCache(json.encodeToString(list))
+                        }
+                    }
+                    emit(Resource.Success<List<HomeItem>>(list))
                 }.onFailure { error ->
-                    emit(Resource.Error<List<HomeItem>>(error.message.toString()))
+                    if (cached.isNullOrEmpty()) {
+                        emit(Resource.Error<List<HomeItem>>(error.message.toString()))
+                    }
                 }
+        }.catch { e ->
+            emit(Resource.Error(e.message ?: "Failed to fetch new releases"))
         }.flowOn(Dispatchers.IO)
 
     override fun getChartData(countryCode: String): Flow<Resource<Chart>> =
@@ -277,7 +292,11 @@ internal class HomeRepositoryImpl(
                     }.onFailure { error ->
                         emit(Resource.Error<Chart>(error.message.toString()))
                     }
+            }.onFailure { error ->
+                emit(Resource.Error<Chart>(error.message.toString()))
             }
+        }.catch { e ->
+            emit(Resource.Error(e.message ?: "Failed to fetch charts"))
         }.flowOn(Dispatchers.IO)
 
     override fun getMoodAndMomentsData(): Flow<Resource<Mood>> =
@@ -288,7 +307,7 @@ internal class HomeRepositoryImpl(
             val cached =
                 dataStoreManager.moodAndGenresCache
                     .first()
-                    ?.let { runCatching { moodJson.decodeFromString<Mood>(it) }.getOrNull() }
+                    ?.let { runCatching { json.decodeFromString<Mood>(it) }.getOrNull() }
             if (cached != null) {
                 emit(Resource.Success<Mood>(cached))
             }
@@ -315,7 +334,7 @@ internal class HomeRepositoryImpl(
                             }
                         val mood = Mood(sections)
                         emit(Resource.Success<Mood>(mood))
-                        dataStoreManager.setMoodAndGenresCache(moodJson.encodeToString(mood))
+                        dataStoreManager.setMoodAndGenresCache(json.encodeToString(mood))
                     }.onFailure { e ->
                         // Already showing the cached copy — surfacing an error over it would
                         // replace working content with an error state.
@@ -323,7 +342,13 @@ internal class HomeRepositoryImpl(
                             emit(Resource.Error<Mood>(e.message.toString()))
                         }
                     }
+            }.onFailure { e ->
+                if (cached == null) {
+                    emit(Resource.Error<Mood>(e.message.toString()))
+                }
             }
+        }.catch { e ->
+            emit(Resource.Error(e.message ?: "Failed to fetch moods"))
         }.flowOn(Dispatchers.IO)
 
     override fun getMoodCategoryArtwork(params: String): Flow<String?> =
@@ -349,7 +374,7 @@ internal class HomeRepositoryImpl(
             emit(resolved)
             if (resolved != null) {
                 dataStoreManager.setMoodArtworkCache(
-                    moodJson.encodeToString(
+                    json.encodeToString(
                         cache + (params to MoodArtwork(resolved, Clock.System.now().toEpochMilliseconds())),
                     ),
                 )
@@ -359,7 +384,7 @@ internal class HomeRepositoryImpl(
     private suspend fun readMoodArtworkCache(): Map<String, MoodArtwork> =
         dataStoreManager.moodArtworkCache
             .first()
-            ?.let { runCatching { moodJson.decodeFromString<Map<String, MoodArtwork>>(it) }.getOrNull() }
+            ?.let { runCatching { json.decodeFromString<Map<String, MoodArtwork>>(it) }.getOrNull() }
             .orEmpty()
 
     override fun getMoodData(params: String): Flow<Resource<MoodsMomentObject>> =

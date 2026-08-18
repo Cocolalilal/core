@@ -90,4 +90,43 @@ interface PlaylistRepository {
      * @return Country Code -> YouTube Music Playlist ID
      */
     fun getChartPlaylist(): Flow<Resource<List<ChartItem>>>
+
+    fun createPlaylist(
+        title: String,
+        description: String? = "Created by Replay",
+        privacyStatus: String = "PRIVATE",
+        listVideoId: List<String>? = null,
+    ): Flow<Resource<String>>
+
+    fun editPlaylist(
+        playlistId: String,
+        title: String? = null,
+        description: String? = null,
+        privacyStatus: String? = null,
+    ): Flow<Resource<String>>
+
+    fun deletePlaylist(
+        playlistId: String,
+    ): Flow<Resource<String>>
+
+    fun addTrackToPlaylist(
+        playlistId: String,
+        videoId: String,
+    ): Flow<Resource<String>>
+
+    fun removeTrackFromPlaylist(
+        playlistId: String,
+        videoId: String,
+        setVideoId: String = "",
+    ): Flow<Resource<String>>
+
+    fun movePlaylistItem(
+        playlistId: String,
+        setVideoId: String,
+        movedSetVideoIdSuccessor: String? = null,
+    ): Flow<Resource<String>>
+
+    fun getPlaylistSuggestions(
+        playlistId: String,
+    ): Flow<Resource<Pair<String?, List<com.maxrave.domain.data.model.browse.album.Track>>>>
 }

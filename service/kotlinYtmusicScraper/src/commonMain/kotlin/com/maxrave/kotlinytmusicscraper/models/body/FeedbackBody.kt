@@ -4,13 +4,8 @@ import com.maxrave.kotlinytmusicscraper.models.Context
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class LikeBody(
+data class FeedbackBody(
     val context: Context,
-    val target: Target,
-) {
-    @Serializable
-    data class Target(
-        val videoId: String? = null,
-        val playlistId: String? = null,
-    )
-}
+    val feedbackTokens: List<String>,
+    val isFeedbackToken: Boolean? = true,
+)

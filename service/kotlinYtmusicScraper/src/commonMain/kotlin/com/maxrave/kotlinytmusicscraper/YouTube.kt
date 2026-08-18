@@ -1867,16 +1867,56 @@ class YouTube {
 
     suspend fun editPlaylist(
         playlistId: String,
-        title: String,
+        title: String? = null,
+        description: String? = null,
+        privacyStatus: String? = null,
     ) = runCatching {
-        ytMusic.editYouTubePlaylist(playlistId, title).status.value
+        ytMusic.editYouTubePlaylist(playlistId, title, description, privacyStatus).status.value
+    }
+
+    suspend fun deletePlaylist(
+        playlistId: String,
+    ) = runCatching {
+        ytMusic.deleteYouTubePlaylist(playlistId).status.value
     }
 
     suspend fun createPlaylist(
         title: String,
-        listVideoId: List<String>?,
+        listVideoId: List<String>? = null,
+        description: String? = "Created by Replay",
+        privacyStatus: String = "PRIVATE",
     ) = runCatching {
-        ytMusic.createYouTubePlaylist(title, listVideoId).body<CreatePlaylistResponse>()
+        ytMusic.createYouTubePlaylist(title, listVideoId, description, privacyStatus).body<CreatePlaylistResponse>()
+    }
+
+    suspend fun sendFeedback(
+        feedbackTokens: List<String>,
+    ) = runCatching {
+        ytMusic.sendFeedback(feedbackTokens).status.value
+    }
+
+    suspend fun subscribeArtist(
+        channelId: String,
+    ) = runCatching {
+        ytMusic.subscribeChannel(channelId).status.value
+    }
+
+    suspend fun unsubscribeArtist(
+        channelId: String,
+    ) = runCatching {
+        ytMusic.unsubscribeChannel(channelId).status.value
+    }
+
+    suspend fun likePlaylistOrAlbum(
+        playlistId: String,
+    ) = runCatching {
+        ytMusic.likePlaylistOrAlbum(playlistId).status.value
+    }
+
+    suspend fun unlikePlaylistOrAlbum(
+        playlistId: String,
+    ) = runCatching {
+        ytMusic.unlikePlaylistOrAlbum(playlistId).status.value
     }
 
     suspend fun addToLiked(mediaId: String) =

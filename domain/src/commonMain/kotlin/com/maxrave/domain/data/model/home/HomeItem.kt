@@ -1,7 +1,9 @@
 package com.maxrave.domain.data.model.home
 
 import com.maxrave.domain.data.model.searchResult.songs.Thumbnail
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class HomeItem(
     val contents: List<Content?>,
     val title: String,

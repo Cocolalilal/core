@@ -4,13 +4,7 @@ import com.maxrave.kotlinytmusicscraper.models.Context
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class LikeBody(
+data class UnsubscribeBody(
     val context: Context,
-    val target: Target,
-) {
-    @Serializable
-    data class Target(
-        val videoId: String? = null,
-        val playlistId: String? = null,
-    )
-}
+    val channelIds: List<String>,
+)

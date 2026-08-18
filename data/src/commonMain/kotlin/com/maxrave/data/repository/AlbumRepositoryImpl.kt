@@ -58,7 +58,16 @@ internal class AlbumRepositoryImpl(
     override suspend fun updateAlbumLiked(
         albumId: String,
         likeStatus: Int,
-    ) = withContext(Dispatchers.Main) { localDataSource.updateAlbumLiked(likeStatus, albumId) }
+    ): Unit = withContext(Dispatchers.Main) {
+        localDataSource.updateAlbumLiked(likeStatus, albumId)
+        withContext(Dispatchers.IO) {
+            if (likeStatus == 1) {
+                youTube.likePlaylistOrAlbum(albumId)
+            } else {
+                youTube.unlikePlaylistOrAlbum(albumId)
+            }
+        }
+    }
 
     override suspend fun updateAlbumInLibrary(
         inLibrary: LocalDateTime,

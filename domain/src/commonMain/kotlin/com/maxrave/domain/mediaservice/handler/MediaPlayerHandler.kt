@@ -75,6 +75,10 @@ interface MediaPlayerHandler {
         to: Int,
     )
 
+    suspend fun updateQueueOrder(newTracks: List<Track>)
+
+    suspend fun shuffleQueue()
+
     fun resetCrossfade()
 
     // Queue management

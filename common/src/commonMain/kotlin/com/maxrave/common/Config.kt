@@ -527,6 +527,7 @@ object MEDIA_NOTIFICATION {
 const val SETTINGS_FILENAME = "settings"
 
 const val DOWNLOAD_EXOPLAYER_FOLDER = "download"
+const val CUSTOM_COVERS_FOLDER = "custom_covers"
 
 const val DB_NAME = "Music Database"
 

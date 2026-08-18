@@ -59,9 +59,16 @@ internal class ArtistRepositoryImpl(
     override suspend fun updateFollowedStatus(
         channelId: String,
         followedStatus: Int,
-    ) = withContext(
-        Dispatchers.Main,
-    ) { localDataSource.updateFollowed(followedStatus, channelId) }
+    ): Unit = withContext(Dispatchers.Main) {
+        localDataSource.updateFollowed(followedStatus, channelId)
+        withContext(Dispatchers.IO) {
+            if (followedStatus == 1) {
+                youTube.subscribeArtist(channelId)
+            } else {
+                youTube.unsubscribeArtist(channelId)
+            }
+        }
+    }
 
     override fun getFollowedArtists(): Flow<List<ArtistEntity>> =
         flow {

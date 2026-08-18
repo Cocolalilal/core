@@ -135,17 +135,17 @@ internal class SongRepositoryImpl(
         likeStatus: Int,
     ) = withContext(Dispatchers.Main) {
         localDataSource.updateLiked(likeStatus, videoId)
-//        if (dataStoreManager.combineLocalAndYouTubeLiked.first() == TRUE) {
-//            if (likeStatus == 1) {
-//                addToYouTubeLiked(videoId).collect { result ->
-//                    Logger.d(TAG, "updateLikeStatus -> addToYouTubeLiked: $result")
-//                }
-//            } else {
-//                removeFromYouTubeLiked(videoId).collect { result ->
-//                    Logger.d(TAG, "updateLikeStatus -> removeFromYouTubeLiked: $result")
-//                }
-//            }
-//        }
+        withContext(Dispatchers.IO) {
+            if (likeStatus == 1) {
+                addToYouTubeLiked(videoId).collect { result ->
+                    Logger.d(TAG, "updateLikeStatus -> addToYouTubeLiked: $result")
+                }
+            } else {
+                removeFromYouTubeLiked(videoId).collect { result ->
+                    Logger.d(TAG, "updateLikeStatus -> removeFromYouTubeLiked: $result")
+                }
+            }
+        }
     }
 
     override fun updateSongInLibrary(
@@ -398,11 +398,23 @@ internal class SongRepositoryImpl(
                 youTube
                     .next(endpoint.toWatchEndpoint())
                     .onSuccess { next ->
-                        emit(Resource.Success(Pair(next.items.toListTrack(), next.continuation)))
+                        emit(Resource.Success<Pair<List<Track>, String?>>(Pair(next.items.toListTrack().toList(), next.continuation)))
                     }.onFailure {
                         it.printStackTrace()
                         emit(Resource.Error(it.message ?: "Error"))
                     }
             }
-        }
+        }.flowOn(Dispatchers.IO)
+
+    override fun sendFeedback(feedbackTokens: List<String>): Flow<Resource<String>> =
+        flow {
+            youTube
+                .sendFeedback(feedbackTokens)
+                .onSuccess { status ->
+                    emit(Resource.Success(status.toString()))
+                }.onFailure { exception ->
+                    exception.printStackTrace()
+                    emit(Resource.Error(exception.message ?: "Unknown error"))
+                }
+        }.flowOn(Dispatchers.IO)
 }

@@ -13,7 +13,9 @@ import com.maxrave.kotlinytmusicscraper.models.YouTubeLocale
 import com.maxrave.kotlinytmusicscraper.models.body.AccountMenuBody
 import com.maxrave.kotlinytmusicscraper.models.body.BrowseBody
 import com.maxrave.kotlinytmusicscraper.models.body.CreatePlaylistBody
+import com.maxrave.kotlinytmusicscraper.models.body.DeletePlaylistBody
 import com.maxrave.kotlinytmusicscraper.models.body.EditPlaylistBody
+import com.maxrave.kotlinytmusicscraper.models.body.FeedbackBody
 import com.maxrave.kotlinytmusicscraper.models.body.FormData
 import com.maxrave.kotlinytmusicscraper.models.body.GetQueueBody
 import com.maxrave.kotlinytmusicscraper.models.body.GetSearchSuggestionsBody
@@ -21,6 +23,8 @@ import com.maxrave.kotlinytmusicscraper.models.body.LikeBody
 import com.maxrave.kotlinytmusicscraper.models.body.NextBody
 import com.maxrave.kotlinytmusicscraper.models.body.PlayerBody
 import com.maxrave.kotlinytmusicscraper.models.body.SearchBody
+import com.maxrave.kotlinytmusicscraper.models.body.SubscribeBody
+import com.maxrave.kotlinytmusicscraper.models.body.UnsubscribeBody
 import com.maxrave.kotlinytmusicscraper.models.response.DownloadProgress
 import com.maxrave.kotlinytmusicscraper.models.response.RemoteConfig
 import com.maxrave.kotlinytmusicscraper.utils.parseCookieString
@@ -471,13 +475,17 @@ class Ytmusic {
 
     suspend fun createYouTubePlaylist(
         title: String,
-        listVideoId: List<String>?,
+        listVideoId: List<String>? = null,
+        description: String? = "Created by Replay",
+        privacyStatus: String = CreatePlaylistBody.PrivacyStatus.PRIVATE,
     ) = httpClient.post("playlist/create") {
         ytClient(WEB_REMIX, setLogin = true)
         setBody(
             CreatePlaylistBody(
                 context = WEB_REMIX.toContext(locale, visitorData),
                 title = title,
+                description = description,
+                privacyStatus = privacyStatus,
                 videoIds = listVideoId,
             ),
         )
@@ -486,19 +494,112 @@ class Ytmusic {
     suspend fun editYouTubePlaylist(
         playlistId: String,
         title: String? = null,
+        description: String? = null,
+        privacyStatus: String? = null,
     ) = httpClient.post("browse/edit_playlist") {
         ytClient(WEB_REMIX, setLogin = true)
+        val actions = mutableListOf<EditPlaylistBody.Action>()
+        if (title != null) {
+            actions.add(
+                EditPlaylistBody.Action(
+                    action = "ACTION_SET_PLAYLIST_NAME",
+                    playlistName = title,
+                )
+            )
+        }
+        if (description != null) {
+            actions.add(
+                EditPlaylistBody.Action(
+                    action = "ACTION_SET_PLAYLIST_DESCRIPTION",
+                    playlistDescription = description,
+                )
+            )
+        }
+        if (privacyStatus != null) {
+            actions.add(
+                EditPlaylistBody.Action(
+                    action = "ACTION_SET_PLAYLIST_PRIVACY",
+                    playlistPrivacy = privacyStatus,
+                )
+            )
+        }
         setBody(
             EditPlaylistBody(
                 context = WEB_REMIX.toContext(locale, visitorData),
                 playlistId = playlistId.removePrefix("VL"),
-                actions =
-                    listOf(
-                        EditPlaylistBody.Action(
-                            action = "ACTION_SET_PLAYLIST_NAME",
-                            playlistName = title ?: "",
-                        ),
-                    ),
+                actions = actions,
+            ),
+        )
+    }
+
+    suspend fun deleteYouTubePlaylist(
+        playlistId: String,
+    ) = httpClient.post("playlist/delete") {
+        ytClient(WEB_REMIX, setLogin = true)
+        setBody(
+            DeletePlaylistBody(
+                context = WEB_REMIX.toContext(locale, visitorData),
+                playlistId = playlistId.removePrefix("VL"),
+            ),
+        )
+    }
+
+    suspend fun sendFeedback(
+        feedbackTokens: List<String>,
+    ) = httpClient.post("feedback") {
+        ytClient(WEB_REMIX, setLogin = true)
+        setBody(
+            FeedbackBody(
+                context = WEB_REMIX.toContext(locale, visitorData),
+                feedbackTokens = feedbackTokens,
+            ),
+        )
+    }
+
+    suspend fun subscribeChannel(
+        channelId: String,
+    ) = httpClient.post("subscription/subscribe") {
+        ytClient(WEB_REMIX, setLogin = true)
+        setBody(
+            SubscribeBody(
+                context = WEB_REMIX.toContext(locale, visitorData),
+                channelIds = listOf(channelId),
+            ),
+        )
+    }
+
+    suspend fun unsubscribeChannel(
+        channelId: String,
+    ) = httpClient.post("subscription/unsubscribe") {
+        ytClient(WEB_REMIX, setLogin = true)
+        setBody(
+            UnsubscribeBody(
+                context = WEB_REMIX.toContext(locale, visitorData),
+                channelIds = listOf(channelId),
+            ),
+        )
+    }
+
+    suspend fun likePlaylistOrAlbum(
+        playlistId: String,
+    ) = httpClient.post("like/like") {
+        ytClient(WEB_REMIX, setLogin = true)
+        setBody(
+            LikeBody(
+                context = WEB_REMIX.toContext(locale, visitorData),
+                target = LikeBody.Target(playlistId = playlistId.removePrefix("VL")),
+            ),
+        )
+    }
+
+    suspend fun unlikePlaylistOrAlbum(
+        playlistId: String,
+    ) = httpClient.post("like/removelike") {
+        ytClient(WEB_REMIX, setLogin = true)
+        setBody(
+            LikeBody(
+                context = WEB_REMIX.toContext(locale, visitorData),
+                target = LikeBody.Target(playlistId = playlistId.removePrefix("VL")),
             ),
         )
     }

@@ -4,7 +4,9 @@ import com.maxrave.domain.data.model.searchResult.songs.Album
 import com.maxrave.domain.data.model.searchResult.songs.Artist
 import com.maxrave.domain.data.model.searchResult.songs.Thumbnail
 import com.maxrave.domain.data.type.HomeContentType
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class Content(
     val album: Album?,
     val artists: List<Artist>?,

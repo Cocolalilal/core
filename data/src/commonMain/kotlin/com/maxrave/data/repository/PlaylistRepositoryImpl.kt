@@ -789,4 +789,127 @@ internal class PlaylistRepositoryImpl(
                     emit(Resource.Error<List<ChartItem>>(exception.message ?: "Unknown error"))
                 }
         }.flowOn(Dispatchers.IO)
+
+    override fun createPlaylist(
+        title: String,
+        description: String?,
+        privacyStatus: String,
+        listVideoId: List<String>?,
+    ): Flow<Resource<String>> =
+        flow {
+            youTube
+                .createPlaylist(
+                    title = title,
+                    listVideoId = listVideoId,
+                    description = description,
+                    privacyStatus = privacyStatus,
+                ).onSuccess { res ->
+                    val playlistId = res.playlistId
+                    if (!playlistId.isNullOrEmpty()) {
+                        emit(Resource.Success(playlistId))
+                    } else {
+                        emit(Resource.Error("Failed to create playlist"))
+                    }
+                }.onFailure { exception ->
+                    exception.printStackTrace()
+                    emit(Resource.Error(exception.message ?: "Unknown error"))
+                }
+        }.flowOn(Dispatchers.IO)
+
+    override fun editPlaylist(
+        playlistId: String,
+        title: String?,
+        description: String?,
+        privacyStatus: String?,
+    ): Flow<Resource<String>> =
+        flow {
+            youTube
+                .editPlaylist(
+                    playlistId = playlistId,
+                    title = title,
+                    description = description,
+                    privacyStatus = privacyStatus,
+                ).onSuccess { status ->
+                    emit(Resource.Success(status.toString()))
+                }.onFailure { exception ->
+                    exception.printStackTrace()
+                    emit(Resource.Error(exception.message ?: "Unknown error"))
+                }
+        }.flowOn(Dispatchers.IO)
+
+    override fun deletePlaylist(
+        playlistId: String,
+    ): Flow<Resource<String>> =
+        flow {
+            youTube
+                .deletePlaylist(playlistId)
+                .onSuccess { status ->
+                    emit(Resource.Success(status.toString()))
+                }.onFailure { exception ->
+                    exception.printStackTrace()
+                    emit(Resource.Error(exception.message ?: "Unknown error"))
+                }
+        }.flowOn(Dispatchers.IO)
+
+    override fun addTrackToPlaylist(
+        playlistId: String,
+        videoId: String,
+    ): Flow<Resource<String>> =
+        flow {
+            youTube
+                .addPlaylistItem(playlistId, videoId)
+                .onSuccess { res ->
+                    emit(Resource.Success(res.status ?: "OK"))
+                }.onFailure { exception ->
+                    exception.printStackTrace()
+                    emit(Resource.Error(exception.message ?: "Unknown error"))
+                }
+        }.flowOn(Dispatchers.IO)
+
+    override fun removeTrackFromPlaylist(
+        playlistId: String,
+        videoId: String,
+        setVideoId: String,
+    ): Flow<Resource<String>> =
+        flow {
+            youTube
+                .removeItemYouTubePlaylist(playlistId, videoId, setVideoId)
+                .onSuccess { status ->
+                    emit(Resource.Success(status.toString()))
+                }.onFailure { exception ->
+                    exception.printStackTrace()
+                    emit(Resource.Error(exception.message ?: "Unknown error"))
+                }
+        }.flowOn(Dispatchers.IO)
+
+    override fun movePlaylistItem(
+        playlistId: String,
+        setVideoId: String,
+        movedSetVideoIdSuccessor: String?,
+    ): Flow<Resource<String>> =
+        flow {
+            youTube
+                .movePlaylistItem(playlistId, setVideoId, movedSetVideoIdSuccessor)
+                .onSuccess { status ->
+                    emit(Resource.Success(status.toString()))
+                }.onFailure { exception ->
+                    exception.printStackTrace()
+                    emit(Resource.Error(exception.message ?: "Unknown error"))
+                }
+        }.flowOn(Dispatchers.IO)
+
+    override fun getPlaylistSuggestions(
+        playlistId: String,
+    ): Flow<Resource<Pair<String?, List<Track>>>> =
+        flow {
+            youTube
+                .getSuggestionsTrackForPlaylist(playlistId)
+                .onSuccess { data ->
+                    val listTrack = data?.second?.map { it.toTrack() } ?: emptyList()
+                    emit(Resource.Success(Pair(data?.first, listTrack)))
+                }.onFailure { exception ->
+                    exception.printStackTrace()
+                    emit(Resource.Error(exception.message ?: "Unknown error"))
+                }
+        }.flowOn(Dispatchers.IO)
 }

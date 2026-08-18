@@ -104,6 +104,58 @@ internal class DataStoreManagerImpl(
         }
     }
 
+    override val homeFeedCache: Flow<String?> =
+        settingsDataStore.data.map { preferences ->
+            preferences[HOME_FEED_CACHE]
+        }
+
+    override suspend fun setHomeFeedCache(json: String) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[HOME_FEED_CACHE] = json
+            }
+        }
+    }
+
+    override val newReleaseCache: Flow<String?> =
+        settingsDataStore.data.map { preferences ->
+            preferences[NEW_RELEASE_CACHE]
+        }
+
+    override suspend fun setNewReleaseCache(json: String) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[NEW_RELEASE_CACHE] = json
+            }
+        }
+    }
+
+    override val customPlaylistCovers: Flow<String?> =
+        settingsDataStore.data.map { preferences ->
+            preferences[CUSTOM_PLAYLIST_COVERS]
+        }
+
+    override suspend fun setCustomPlaylistCover(playlistId: String, uri: String?) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                val currentRaw = settings[CUSTOM_PLAYLIST_COVERS].orEmpty()
+                val map = try {
+                    if (currentRaw.isNotEmpty()) {
+                        kotlinx.serialization.json.Json.decodeFromString<Map<String, String>>(currentRaw).toMutableMap()
+                    } else mutableMapOf()
+                } catch (e: Exception) {
+                    mutableMapOf()
+                }
+                if (uri.isNullOrEmpty()) {
+                    map.remove(playlistId)
+                } else {
+                    map[playlistId] = uri
+                }
+                settings[CUSTOM_PLAYLIST_COVERS] = kotlinx.serialization.json.Json.encodeToString(map)
+            }
+        }
+    }
+
     override val moodArtworkCache: Flow<String?> =
         settingsDataStore.data.map { preferences ->
             preferences[MOOD_ARTWORK_CACHE]
@@ -1491,7 +1543,87 @@ internal class DataStoreManagerImpl(
         }
     }
 
+    private val pinnedJson = kotlinx.serialization.json.Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        encodeDefaults = true
+    }
+
+    override val pinnedItems: Flow<List<com.maxrave.domain.data.model.pinned.PinnedItem>> =
+        settingsDataStore.data.map { preferences ->
+            val json = preferences[PINNED_ITEMS] ?: return@map emptyList()
+            try {
+                pinnedJson.decodeFromString<List<com.maxrave.domain.data.model.pinned.PinnedItem>>(json)
+            } catch (e: Exception) {
+                Logger.e("DataStoreManagerImpl", "Failed to decode pinned items: ${e.message}")
+                emptyList()
+            }
+        }
+
+    override suspend fun addPin(item: com.maxrave.domain.data.model.pinned.PinnedItem) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                val current = settings[PINNED_ITEMS]?.let { json ->
+                    try {
+                        pinnedJson.decodeFromString<List<com.maxrave.domain.data.model.pinned.PinnedItem>>(json)
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                } ?: emptyList()
+                if (current.none { it.id == item.id || it.targetId == item.targetId }) {
+                    val updated = current + item
+                    settings[PINNED_ITEMS] = pinnedJson.encodeToString(updated)
+                }
+            }
+        }
+    }
+
+    override suspend fun removePin(id: String) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                val current = settings[PINNED_ITEMS]?.let { json ->
+                    try {
+                        pinnedJson.decodeFromString<List<com.maxrave.domain.data.model.pinned.PinnedItem>>(json)
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                } ?: emptyList()
+                val updated = current.filterNot { it.id == id || it.targetId == id }
+                settings[PINNED_ITEMS] = pinnedJson.encodeToString(updated)
+            }
+        }
+    }
+
+    override suspend fun updatePins(items: List<com.maxrave.domain.data.model.pinned.PinnedItem>) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[PINNED_ITEMS] = pinnedJson.encodeToString(items)
+            }
+        }
+    }
+
+    override fun isPinned(targetId: String): Flow<Boolean> =
+        pinnedItems.map { items ->
+            items.any { it.id == targetId || it.targetId == targetId }
+        }
+
+    override val isLibraryGridView: Flow<Boolean> =
+        settingsDataStore.data.map { preferences ->
+            preferences[IS_LIBRARY_GRID_VIEW]?.toBooleanStrictOrNull() ?: false
+        }
+
+    override suspend fun setLibraryGridView(isGrid: Boolean) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[IS_LIBRARY_GRID_VIEW] = isGrid.toString()
+            }
+        }
+    }
+
     companion object Settings {
+        val PINNED_ITEMS = stringPreferencesKey("pinned_items_json")
+        val CUSTOM_PLAYLIST_COVERS = stringPreferencesKey("custom_playlist_covers")
+        val IS_LIBRARY_GRID_VIEW = stringPreferencesKey("is_library_grid_view")
         val APP_VERSION = stringPreferencesKey("app_version")
         val COOKIE = stringPreferencesKey("cookie")
 
@@ -1499,6 +1631,8 @@ internal class DataStoreManagerImpl(
         val LOGGED_IN = stringPreferencesKey("logged_in")
         val LOCATION = stringPreferencesKey("location")
         val MOOD_AND_GENRES_CACHE = stringPreferencesKey("mood_and_genres_cache")
+        val HOME_FEED_CACHE = stringPreferencesKey("home_feed_cache")
+        val NEW_RELEASE_CACHE = stringPreferencesKey("new_release_cache")
         val MOOD_ARTWORK_CACHE = stringPreferencesKey("mood_artwork_cache")
         val QUALITY = stringPreferencesKey("quality")
         val DOWNLOAD_QUALITY = stringPreferencesKey("download_quality")
