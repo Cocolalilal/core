@@ -16,6 +16,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -166,6 +167,17 @@ fun MediaPlayerViewWithSubtitleJvm(
 
     val state by mediaPlayerHandler.nowPlayingState.collectAsState()
     val videoFrames by player.currentVideoFrames.collectAsState()
+    val videoAspect by player.currentVideoAspect.collectAsState()
+
+    // Forward the true playing-video aspect (distinct only) so the Now Playing
+    // container fits the video instead of stretching or letterboxing it.
+    var lastForwardedAspect by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(videoAspect) {
+        if (videoAspect > 0f && kotlin.math.abs(videoAspect - lastForwardedAspect) > 0.01f) {
+            lastForwardedAspect = videoAspect
+            onVideoAspectRatioChanged?.invoke(videoAspect)
+        }
+    }
 
     val showArtwork = videoFrames == null
 

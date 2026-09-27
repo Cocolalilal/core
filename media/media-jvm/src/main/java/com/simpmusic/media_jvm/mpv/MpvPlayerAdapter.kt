@@ -266,6 +266,11 @@ class MpvPlayerAdapter(
     /** Frame source of the player whose video should be on screen, or null when the current track has no video. */
     val currentVideoFrames: StateFlow<MpvVideoFrameSource?> = _currentVideoFrames.asStateFlow()
 
+    private val _currentVideoAspect = MutableStateFlow(0f)
+
+    /** Display aspect ratio of the current video (SAR-aware), or 0 when unknown/audio-only. */
+    val currentVideoAspect: StateFlow<Float> = _currentVideoAspect.asStateFlow()
+
     // ========== Playback Source ==========
     private data class PlayableSource(
         val isVideo: Boolean,
@@ -1282,6 +1287,12 @@ class MpvPlayerAdapter(
                             // Reset retry counter on successful playback
                             retryCount = 0
                             retryVideoId = null
+                        }
+                        // Publish the true playing-video aspect so the UI fits the
+                        // video instead of stretching or letterboxing it.
+                        val aspect = player.videoAspectRatio()
+                        if (aspect > 0f && kotlin.math.abs(aspect - _currentVideoAspect.value) > 0.01f) {
+                            _currentVideoAspect.value = aspect
                         }
                     }
                 }

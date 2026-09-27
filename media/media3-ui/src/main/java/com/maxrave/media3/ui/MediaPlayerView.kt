@@ -232,6 +232,7 @@ fun MediaPlayerViewWithSubtitle(
     translatedLyricsData: Lyrics? = null,
     mainTextStyle: TextStyle,
     translatedTextStyle: TextStyle,
+    onVideoAspectRatioChanged: ((Float) -> Unit)? = null,
 ) {
     val player: Player = koinInject(named(playerName))
 
@@ -240,6 +241,12 @@ fun MediaPlayerViewWithSubtitle(
     }
 
     var videoRatio by rememberSaveable {
+        mutableFloatStateOf(16f / 9)
+    }
+
+    // Last ratio forwarded outward — listener-side guard so aspect reports
+    // don't recompose on every duplicate callback.
+    var lastReportedRatio by remember {
         mutableFloatStateOf(16f / 9)
     }
 
@@ -354,6 +361,16 @@ fun MediaPlayerViewWithSubtitle(
                         } else {
                             16f / 9 // Default ratio if video size is not available
                         }
+                    // Report the true playing-video ratio outward (distinct only)
+                    // so the Now Playing container fits the video instead of
+                    // stretching it or letterboxing it.
+                    if (videoSize.width > 0 && videoSize.height > 0) {
+                        val ratio = videoSize.width.toFloat() / videoSize.height.toFloat()
+                        if (ratio.isFinite() && kotlin.math.abs(ratio - lastReportedRatio) > 0.01f) {
+                            lastReportedRatio = ratio
+                            onVideoAspectRatioChanged?.invoke(ratio)
+                        }
+                    }
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {

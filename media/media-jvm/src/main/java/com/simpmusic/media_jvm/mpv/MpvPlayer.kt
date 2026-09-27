@@ -904,6 +904,17 @@ class MpvPlayer private constructor(
             Logger.e(TAG, "get $name threw: ${e.message}")
             0.0
         }
+
+    /**
+     * Display aspect ratio of the loaded video (`video-params/aspect`, SAR-aware),
+     * or 0 when unavailable (audio-only handle, nothing loaded yet). One-shot
+     * query — the adapter polls it when playback (re)starts.
+     */
+    fun videoAspectRatio(): Float {
+        if (isReleased) return 0f
+        val aspect = getPropertyDouble("video-params/aspect")
+        return if (aspect.isFinite() && aspect > 0.0) aspect.toFloat() else 0f
+    }
 }
 
 /**
