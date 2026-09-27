@@ -110,4 +110,6 @@ interface SongRepository {
     fun getRadioFromEndpoint(endpoint: YouTubeWatchEndpoint): Flow<Resource<Pair<List<Track>, String?>>>
 
     fun sendFeedback(feedbackTokens: List<String>): Flow<Resource<String>>
+
+    suspend fun getCounterpart(track: Track, preferSong: Boolean): Track?
 }

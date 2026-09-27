@@ -202,3 +202,12 @@ fun decodeHtmlEntities(text: String): String {
 
     return result
 }
+
+fun Track.isVideoContent(): Boolean =
+    this.videoType?.equals("video", ignoreCase = true) == true ||
+        this.videoType?.equals("MUSIC_VIDEO", ignoreCase = true) == true ||
+        this.videoType?.equals("MUSIC_VIDEO_TYPE_OMV", ignoreCase = true) == true ||
+        this.videoType?.equals("MUSIC_VIDEO_TYPE_UGC", ignoreCase = true) == true
+
+fun Track.contentTypeMode(): String =
+    if (this.isVideoContent()) com.maxrave.domain.manager.DataStoreManager.CONTENT_TYPE_VIDEO else com.maxrave.domain.manager.DataStoreManager.CONTENT_TYPE_SONG

@@ -417,4 +417,6 @@ internal class SongRepositoryImpl(
                     emit(Resource.Error(exception.message ?: "Unknown error"))
                 }
         }.flowOn(Dispatchers.IO)
+
+    override suspend fun getCounterpart(track: Track, preferSong: Boolean): Track? = null
 }

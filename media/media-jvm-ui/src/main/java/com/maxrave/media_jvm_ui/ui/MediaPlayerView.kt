@@ -159,6 +159,7 @@ fun MediaPlayerViewWithSubtitleJvm(
     translatedLyricsData: Lyrics?,
     mainTextStyle: TextStyle,
     translatedTextStyle: TextStyle,
+    onVideoAspectRatioChanged: ((Float) -> Unit)? = null,
     mediaPlayerHandler: MediaPlayerHandler = koinInject(),
 ) {
     val player: MpvPlayerAdapter = koinInject<MpvPlayerAdapter>()

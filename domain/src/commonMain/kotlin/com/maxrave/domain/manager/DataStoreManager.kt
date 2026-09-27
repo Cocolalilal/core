@@ -330,6 +330,30 @@ interface DataStoreManager {
 
     suspend fun setCrossfadeDjMode(enabled: Boolean)
 
+    val djTransitionStyle: Flow<String>
+
+    suspend fun setDjTransitionStyle(style: String)
+
+    val djBpmMatching: Flow<String>
+
+    suspend fun setDjBpmMatching(enabled: Boolean)
+
+    val djTransitionOnSkip: Flow<String>
+
+    suspend fun setDjTransitionOnSkip(enabled: Boolean)
+
+    val floatingSurfaceStyle: Flow<String>
+
+    suspend fun setFloatingSurfaceStyle(style: String)
+
+    val performanceMode: Flow<Boolean>
+
+    suspend fun setPerformanceMode(enabled: Boolean)
+
+    val contentTypeMode: Flow<String>
+
+    suspend fun setContentTypeMode(mode: String)
+
     val youtubeSubtitleLanguage: Flow<String>
 
     suspend fun setYoutubeSubtitleLanguage(language: String)
@@ -464,6 +488,15 @@ interface DataStoreManager {
         const val DEFAULT_THEME_COLOR_HEX = "FF8ECAE6"
 
         const val CROSSFADE_DURATION_AUTO = 0
+ 
+         const val DJ_TRANSITION_STYLE_SMART_AI = "smart_ai"
+         const val DJ_TRANSITION_STYLE_BASS_SWAP = "bass_swap"
+         const val DJ_TRANSITION_STYLE_FILTER_SWEEP = "filter_sweep"
+         const val DJ_TRANSITION_STYLE_VINYL_BRAKE = "vinyl_brake"
+         const val DJ_TRANSITION_STYLE_SMOOTH = "smooth_crossfade"
+
+         const val CONTENT_TYPE_SONG = "song"
+         const val CONTENT_TYPE_VIDEO = "video"
 
         const val PROXY_TYPE_HTTP = "http"
         const val PROXY_TYPE_SOCKS = "socks"

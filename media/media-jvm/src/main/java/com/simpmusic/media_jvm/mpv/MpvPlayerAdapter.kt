@@ -1,6 +1,7 @@
 package com.simpmusic.media_jvm.mpv
 
 import com.maxrave.common.MERGING_DATA_TYPE
+import com.maxrave.domain.data.player.DjTransitionStyle
 import com.maxrave.domain.data.player.GenericMediaItem
 import com.maxrave.domain.data.player.GenericPlaybackParameters
 import com.maxrave.domain.data.player.PlayerConstants
@@ -101,6 +102,27 @@ class MpvPlayerAdapter(
         }
 
         coroutineScope.launch {
+            dataStoreManager.djTransitionStyle.collect { styleKey ->
+                djTransitionStyle = DjTransitionStyle.fromKey(styleKey)
+                Logger.d(TAG, "DJ transition style: $djTransitionStyle")
+            }
+        }
+
+        coroutineScope.launch {
+            dataStoreManager.djBpmMatching.collect { enabled ->
+                djBpmMatching = (enabled == DataStoreManager.TRUE)
+                Logger.d(TAG, "DJ BPM matching: $djBpmMatching")
+            }
+        }
+
+        coroutineScope.launch {
+            dataStoreManager.djTransitionOnSkip.collect { enabled ->
+                djTransitionOnSkip = (enabled == DataStoreManager.TRUE)
+                Logger.d(TAG, "DJ transition on skip: $djTransitionOnSkip")
+            }
+        }
+
+        coroutineScope.launch {
             dataStoreManager.watchVideoInsteadOfPlayingAudio.collect { enabled ->
                 watchVideoEnabled = (enabled == DataStoreManager.TRUE)
                 Logger.d(TAG, "Watch video enabled: $watchVideoEnabled")
@@ -174,6 +196,15 @@ class MpvPlayerAdapter(
 
     @Volatile
     private var djCrossfadeEnabled = false
+
+    @Volatile
+    private var djTransitionStyle: DjTransitionStyle = DjTransitionStyle.SMART_AI
+
+    @Volatile
+    private var djBpmMatching: Boolean = true
+
+    @Volatile
+    private var djTransitionOnSkip: Boolean = true
 
     // Whether video content plays as video (watch-video setting) — the same condition
     // extractPlayableUrl uses to include the video stream in the edl:// merged source.
@@ -382,7 +413,13 @@ class MpvPlayerAdapter(
                 commitIncomingAsCurrent()
             }
             if (hasNextMediaItem()) {
-                seekTo(getNextMediaItemIndex(), 0)
+                val nextIndex = getNextMediaItemIndex()
+                if (djTransitionOnSkip && crossfadeEnabled && !wasCrossfading && (internalState == InternalState.PLAYING || internalPlayWhenReady) && !isCurrentTrackVideo()) {
+                    Logger.d(TAG, "seekToNext: initiating intentional DJ skip transition to $nextIndex")
+                    triggerCrossfadeTransition(nextIndex, isManualSkip = true)
+                } else {
+                    seekTo(nextIndex, 0)
+                }
             } else if (wasCrossfading) {
                 // A+1 was the last track — stay on it; it is already promoted and announced.
                 Logger.d(TAG, "seekToNext: A+1 was the last track — staying on it")
@@ -1418,9 +1455,12 @@ class MpvPlayerAdapter(
     }
 
     /**
-     * Trigger crossfade to next track
+     * Trigger crossfade to next track.
+     * Incorporates downbeat phase-locking, intentional DJ transition archetypes,
+     * and phrase boundary alignment inspired by DJtransGAN (https://github.com/ChenPaulYu/DJtransGAN)
+     * and FlowFusion (https://github.com/the-data-science-union/DSU-W2025-FlowFusion-Automated-Song-Transitions).
      */
-    private fun triggerCrossfadeTransition(nextIndex: Int) {
+    private fun triggerCrossfadeTransition(nextIndex: Int, isManualSkip: Boolean = false) {
         if (nextIndex !in playlist.indices || isCrossfading) return
 
         crossfadeJob =
@@ -1430,7 +1470,38 @@ class MpvPlayerAdapter(
                     val nextMediaItem = playlist[nextIndex]
                     val nextVideoId = nextMediaItem.mediaId
 
-                    Logger.d(TAG, "Starting crossfade to track $nextIndex")
+                    Logger.d(TAG, "Starting DJ crossfade to track $nextIndex (manualSkip=$isManualSkip)")
+
+                    val currentVideoId = playlist.getOrNull(localCurrentMediaItemIndex)?.mediaId ?: ""
+
+                    // AutoMix: load metadata and calculate parameters
+                    loadAudioMetaIfNeeded(currentVideoId)
+                    loadAudioMetaIfNeeded(nextVideoId)
+
+                    val effectiveStyle = resolveEffectiveTransitionStyle(currentVideoId, nextVideoId, isManualSkip)
+                    val resolvedConfigDurationMs =
+                        if (crossfadeDurationMs == DataStoreManager.CROSSFADE_DURATION_AUTO || djCrossfadeEnabled) {
+                            resolveAutoCrossfadeDurationMs(currentVideoId, nextVideoId, effectiveStyle)
+                        } else {
+                            crossfadeDurationMs
+                        }
+
+                    // Downbeat / Bar Grid Phase-Locking:
+                    // Delay so Track B drops on Beat 1 of a measure, ensuring rhythm sync.
+                    val currentBpm = audioMetaCache[currentVideoId]?.bpm ?: DEFAULT_TEMPO_BPM
+                    val safeBpm = if (currentBpm in 60..220) currentBpm else DEFAULT_TEMPO_BPM
+                    val beatMs = 60_000.0 / safeBpm
+                    val barMs = (4 * beatMs).toLong().coerceAtLeast(1000L)
+
+                    if (!isManualSkip && currentPlayer != null) {
+                        val currentPos = currentPlayer?.time ?: 0L
+                        val barOffset = if (currentPos > 0) currentPos % barMs else 0L
+                        val delayToNextDownbeat = (barMs - barOffset).coerceIn(0L, barMs)
+                        if (delayToNextDownbeat in 50L..2500L) {
+                            Logger.d(TAG, "Phase-locking to downbeat: delaying ${delayToNextDownbeat}ms")
+                            delay(delayToNextDownbeat)
+                        }
+                    }
 
                     // Extract URL on IO thread (network), mpv native calls stay on service thread
                     val cachedPrecache = precachedPlayers.remove(nextVideoId)
@@ -1451,9 +1522,6 @@ class MpvPlayerAdapter(
                         }
 
                     if (nextPlayer != null) {
-                        // Setup secondary player with its OWN listener.
-                        // DO NOT call setupPlayerEventsInternal() here - that would remove
-                        // the event listener from the current player (which is still playing).
                         secondaryPlayer = nextPlayer
                         nextPlayer.setEventListener(
                             object : MpvPlayerEventAdapter() {
@@ -1483,21 +1551,7 @@ class MpvPlayerAdapter(
                         return@launch
                     }
 
-                    // Capture current index BEFORE advancing localCurrentMediaItemIndex
-                    val currentVideoId = playlist.getOrNull(localCurrentMediaItemIndex)?.mediaId ?: ""
                     crossfadeFromIndex = localCurrentMediaItemIndex
-
-                    // AutoMix: load metadata and calculate parameters
-                    val isAutoMode = crossfadeDurationMs == DataStoreManager.CROSSFADE_DURATION_AUTO
-                    if (isAutoMode || djCrossfadeEnabled) {
-                        loadAudioMetaIfNeeded(currentVideoId)
-                        loadAudioMetaIfNeeded(nextVideoId)
-                    }
-
-                    // Update now playing and video frames immediately. Set unconditionally: the
-                    // old null-guard kept the OUTGOING player's frames on screen when the incoming
-                    // track has no video, leaving a dead surface from a soon-released player on
-                    // screen (the "black video until next/prev" bug).
                     localCurrentMediaItemIndex = nextIndex
                     _currentVideoFrames.value = nextPlayer.videoFrames
                     notifyListeners {
@@ -1509,27 +1563,19 @@ class MpvPlayerAdapter(
 
                     Logger.d(TAG, "Now playing updated to track $nextIndex during crossfade")
 
-                    // AutoMix: resolve duration and BPM ratio
-                    val resolvedConfigDurationMs =
-                        if (isAutoMode) {
-                            resolveAutoCrossfadeDurationMs(currentVideoId, nextVideoId)
-                        } else {
-                            crossfadeDurationMs
-                        }
-                    // AutoMix tempo/pitch match for the OUTGOING track. Gated on Auto mode exactly
-                    // like Android: outside Auto mode the user picked a fixed crossfade length and
-                    // gets a plain fade. Both helpers return 1.0f when the BPM / key metadata is
-                    // missing, so a track with no Tidal analysis simply skips the ramp.
-                    val bpmSpeedRatio = if (isAutoMode) calculateBpmSpeedRatio(currentVideoId, nextVideoId) else 1.0f
-                    val keyPitchRatio = if (isAutoMode) calculateKeyPitchRatio(currentVideoId, nextVideoId) else 1.0f
+                    val bpmSpeedRatio = if (djBpmMatching) calculateBpmSpeedRatio(currentVideoId, nextVideoId) else 1.0f
+                    val keyPitchRatio = if (djBpmMatching) calculateKeyPitchRatio(currentVideoId, nextVideoId) else 1.0f
 
-                    // Calculate effective crossfade duration based on ACTUAL remaining time.
                     val actualTimeRemaining =
-                        currentPlayer?.let { player ->
-                            val dur = player.length
-                            val pos = player.time
-                            if (dur > 0 && pos >= 0) (dur - pos) else resolvedConfigDurationMs.toLong()
-                        } ?: resolvedConfigDurationMs.toLong()
+                        if (isManualSkip) {
+                            resolvedConfigDurationMs.toLong()
+                        } else {
+                            currentPlayer?.let { player ->
+                                val dur = player.length
+                                val pos = player.time
+                                if (dur > 0 && pos >= 0) (dur - pos) else resolvedConfigDurationMs.toLong()
+                            } ?: resolvedConfigDurationMs.toLong()
+                        }
 
                     val effectiveCrossfadeDurationMs =
                         minOf(
@@ -1539,15 +1585,15 @@ class MpvPlayerAdapter(
 
                     Logger.d(
                         TAG,
-                        "Crossfade duration: configured=${resolvedConfigDurationMs}ms (auto=$isAutoMode), " +
-                            "bpmRatio=$bpmSpeedRatio, pitchRatio=$keyPitchRatio, " +
-                            "actualRemaining=${actualTimeRemaining}ms, effective=${effectiveCrossfadeDurationMs}ms",
+                        "DJ Transition triggered: style=$effectiveStyle, duration=${effectiveCrossfadeDurationMs}ms, " +
+                            "bpmRatio=$bpmSpeedRatio, pitchRatio=$keyPitchRatio",
                     )
 
                     performCrossfade(
                         nextIndex,
                         nextPlayer,
                         effectiveCrossfadeDurationMs,
+                        effectiveStyle,
                         bpmSpeedRatio,
                         keyPitchRatio,
                     )
@@ -1667,6 +1713,7 @@ class MpvPlayerAdapter(
      * @param effectiveDurationMs The actual crossfade duration to use. May be shorter than
      *   the configured [crossfadeDurationMs] if URL resolution / buffering consumed
      *   part of the crossfade window.
+     * @param style The resolved DJ transition archetype.
      * @param targetSpeedRatio BPM-based speed ratio for the OUTGOING track (1.0 = no adjustment).
      * @param targetPitchRatio Key-based pitch ratio for the OUTGOING track (1.0 = no adjustment).
      */
@@ -1674,6 +1721,7 @@ class MpvPlayerAdapter(
         nextIndex: Int,
         nextPlayer: MpvPlayer,
         effectiveDurationMs: Int,
+        style: DjTransitionStyle,
         targetSpeedRatio: Float = 1.0f,
         targetPitchRatio: Float = 1.0f,
     ) {
@@ -1682,40 +1730,67 @@ class MpvPlayerAdapter(
         // A pure 0..100 attenuation per handle: the user's level rides on the master volume and must
         // come out of the crossfade exactly as it went in.
         val targetVolume = 100
-        val wantDjFilter = djCrossfadeEnabled
-        val wantAutoMixRamp = targetSpeedRatio != 1.0f || targetPitchRatio != 1.0f
+        val wantAutoMixRamp = djBpmMatching && (targetSpeedRatio != 1.0f || targetPitchRatio != 1.0f)
         val outgoingPlayer = currentPlayer
 
-        // Arm the filter chains BEFORE the animation starts, so the 50 steps only have to retune
-        // live filters (af-command) instead of rebuilding the chain each time. Both are armed at
-        // their transparent starting cutoff, so arming is inaudible on its own.
-        //
-        // The outgoing handle carries the low-pass AND the pitch shift; the incoming one only ever
-        // gets the high-pass, because Android adjusts speed/pitch on the outgoing player alone.
-        val outgoingChain =
-            if ((wantDjFilter || wantAutoMixRamp) && outgoingPlayer != null) {
-                outgoingPlayer.installCrossfadeChain(
-                    sweep = if (wantDjFilter) MpvCrossfadeFilter.LOW_PASS else null,
+        val outgoingChain: MpvPlayer.CrossfadeChain
+        val incomingChain: MpvPlayer.CrossfadeChain
+
+        when (style) {
+            DjTransitionStyle.BASS_SWAP -> {
+                // DJtransGAN: Outgoing track plays wide open (LPF 20kHz).
+                // Incoming track has sub-bass killed (HPF 350Hz) so its melody/intro layers cleanly.
+                outgoingChain = outgoingPlayer?.installCrossfadeChain(
+                    sweep = MpvCrossfadeFilter.LOW_PASS,
                     sweepStartHz = LPF_START_HZ,
                     pitchShift = wantAutoMixRamp,
+                ) ?: MpvPlayer.CrossfadeChain.NONE
+                incomingChain = nextPlayer.installCrossfadeChain(
+                    sweep = MpvCrossfadeFilter.HIGH_PASS,
+                    sweepStartHz = DJ_BASS_KILL_HZ,
+                    pitchShift = false,
                 )
-            } else {
-                MpvPlayer.CrossfadeChain.NONE
             }
-        val incomingChain =
-            if (wantDjFilter) {
-                nextPlayer.installCrossfadeChain(
+            DjTransitionStyle.FILTER_SWEEP -> {
+                // Resonant sweep washout: outgoing track sweeps HPF up to 3500Hz; incoming sweeps HPF down.
+                outgoingChain = outgoingPlayer?.installCrossfadeChain(
+                    sweep = MpvCrossfadeFilter.HIGH_PASS,
+                    sweepStartHz = 20f,
+                    pitchShift = wantAutoMixRamp,
+                ) ?: MpvPlayer.CrossfadeChain.NONE
+                incomingChain = nextPlayer.installCrossfadeChain(
+                    sweep = MpvCrossfadeFilter.HIGH_PASS,
+                    sweepStartHz = 400f,
+                    pitchShift = false,
+                )
+            }
+            DjTransitionStyle.VINYL_BRAKE -> {
+                // Turntable motor brake: no frequency filter needed, driven by rate/pitch drop
+                outgoingChain = if (wantAutoMixRamp && outgoingPlayer != null) {
+                    outgoingPlayer.installCrossfadeChain(
+                        sweep = null,
+                        sweepStartHz = 0f,
+                        pitchShift = true,
+                    )
+                } else {
+                    MpvPlayer.CrossfadeChain.NONE
+                }
+                incomingChain = MpvPlayer.CrossfadeChain.NONE
+            }
+            DjTransitionStyle.SMOOTH_CROSSFADE, DjTransitionStyle.SMART_AI -> {
+                outgoingChain = outgoingPlayer?.installCrossfadeChain(
+                    sweep = MpvCrossfadeFilter.LOW_PASS,
+                    sweepStartHz = LPF_START_HZ,
+                    pitchShift = wantAutoMixRamp,
+                ) ?: MpvPlayer.CrossfadeChain.NONE
+                incomingChain = nextPlayer.installCrossfadeChain(
                     sweep = MpvCrossfadeFilter.HIGH_PASS,
                     sweepStartHz = HPF_START_HZ,
                     pitchShift = false,
                 )
-            } else {
-                MpvPlayer.CrossfadeChain.NONE
             }
+        }
 
-        // Only drive what mpv actually installed. The speed ramp still runs without rubberband —
-        // mpv falls back to its built-in scaletempo2, which stretches tempo with pitch preserved,
-        // the same thing Media3's PlaybackParameters.speed does. Only the pitch match is lost.
         val sweepOutgoing = outgoingChain.sweep
         val sweepIncoming = incomingChain.sweep
         val rampSpeed = wantAutoMixRamp && outgoingPlayer != null
@@ -1724,7 +1799,7 @@ class MpvPlayerAdapter(
         Logger.d(
             TAG,
             "Crossfade animation: ${effectiveDurationMs}ms, $steps steps, ${delayPerStep}ms/step, " +
-                "internalVolume=$internalVolume, dj=$wantDjFilter (out=$sweepOutgoing, in=$sweepIncoming), " +
+                "style=$style (out=$sweepOutgoing, in=$sweepIncoming), " +
                 "autoMix=$wantAutoMixRamp (speed=$targetSpeedRatio ramp=$rampSpeed, " +
                 "pitch=$targetPitchRatio ramp=$rampPitch)",
         )
@@ -1738,33 +1813,112 @@ class MpvPlayerAdapter(
                 currentCoroutineContext().ensureActive()
 
                 val progress = step.toFloat() / steps
-                val angle = progress * Math.PI / 2.0
 
-                val fadeOutVolume = (targetVolume * kotlin.math.cos(angle)).toInt()
-                currentPlayer?.setFadeVolume(fadeOutVolume)
+                when (style) {
+                    DjTransitionStyle.BASS_SWAP -> {
+                        // DJtransGAN Club Bass Swap:
+                        // Intro blend (0.0..0.5) with sub-bass kill and vocal mid-range ducking
+                        if (progress < 0.5f) {
+                            val introProgress = progress * 2f
+                            val inAngle = introProgress * Math.PI / 2.0
+                            val fadeInVolume = (targetVolume * kotlin.math.sin(inAngle)).toInt()
+                            nextPlayer.setFadeVolume(fadeInVolume)
 
-                val fadeInVolume = (targetVolume * kotlin.math.sin(angle)).toInt()
-                nextPlayer.setFadeVolume(fadeInVolume)
+                            // Mid-range vocal ducking on outgoing track around 0.25..0.5
+                            val ducking = if (progress >= 0.25f) 0.82f else 1.0f
+                            val fadeOutVolume = (targetVolume * ducking).toInt()
+                            currentPlayer?.setFadeVolume(fadeOutVolume)
 
-                // DJ-style filter sweep, alongside the volume fade.
-                // S-curve (sigmoid) on the time axis holds both tracks near full spectrum at the
-                // start and end and transitions steeply in the middle; exponential interpolation
-                // on the frequency axis matches logarithmic hearing perception.
-                if (sweepOutgoing || sweepIncoming) {
-                    val filterProgress = sigmoid(progress)
-                    if (sweepOutgoing) {
-                        // Outgoing: LPF sweeps 20kHz → 200Hz
-                        outgoingPlayer?.setCrossfadeCutoffHz(
-                            MpvCrossfadeFilter.LOW_PASS,
-                            exponentialInterpolate(LPF_START_HZ, LPF_END_HZ, filterProgress),
-                        )
+                            if (sweepIncoming) {
+                                nextPlayer.setCrossfadeCutoffHz(MpvCrossfadeFilter.HIGH_PASS, DJ_BASS_KILL_HZ)
+                            }
+                            if (sweepOutgoing) {
+                                outgoingPlayer?.setCrossfadeCutoffHz(MpvCrossfadeFilter.LOW_PASS, LPF_START_HZ)
+                            }
+                        } else {
+                            // Downbeat Bass Swap (0.5..1.0):
+                            // Incoming HPF drops wide open to 20Hz; outgoing LPF cuts to 180Hz (muffled kick eliminated)
+                            val outroProgress = (progress - 0.5f) * 2f
+                            val outAngle = outroProgress * Math.PI / 2.0
+
+                            if (sweepIncoming) {
+                                nextPlayer.setCrossfadeCutoffHz(MpvCrossfadeFilter.HIGH_PASS, 20f)
+                            }
+                            nextPlayer.setFadeVolume(targetVolume)
+
+                            if (sweepOutgoing) {
+                                outgoingPlayer?.setCrossfadeCutoffHz(
+                                    MpvCrossfadeFilter.LOW_PASS,
+                                    exponentialInterpolate(DJ_DROP_LPF_CUT_HZ, 40f, outroProgress),
+                                )
+                            }
+                            val fadeOutVolume = (targetVolume * 0.35f * kotlin.math.cos(outAngle)).toInt()
+                            currentPlayer?.setFadeVolume(fadeOutVolume)
+                        }
                     }
-                    if (sweepIncoming) {
-                        // Incoming: HPF sweeps 2kHz → 20Hz
-                        nextPlayer.setCrossfadeCutoffHz(
-                            MpvCrossfadeFilter.HIGH_PASS,
-                            exponentialInterpolate(HPF_START_HZ, HPF_END_HZ, filterProgress),
-                        )
+
+                    DjTransitionStyle.FILTER_SWEEP -> {
+                        val fadeAngle = progress * Math.PI / 2.0
+                        val fadeOutVolume = (targetVolume * kotlin.math.cos(fadeAngle)).toInt()
+                        val fadeInVolume = (targetVolume * kotlin.math.sin(fadeAngle)).toInt()
+                        currentPlayer?.setFadeVolume(fadeOutVolume)
+                        nextPlayer.setFadeVolume(fadeInVolume)
+
+                        if (sweepOutgoing) {
+                            outgoingPlayer?.setCrossfadeCutoffHz(
+                                MpvCrossfadeFilter.HIGH_PASS,
+                                exponentialInterpolate(20f, 3500f, progress),
+                            )
+                        }
+                        if (sweepIncoming) {
+                            nextPlayer.setCrossfadeCutoffHz(
+                                MpvCrossfadeFilter.HIGH_PASS,
+                                exponentialInterpolate(400f, 20f, progress),
+                            )
+                        }
+                    }
+
+                    DjTransitionStyle.VINYL_BRAKE -> {
+                        val brake = (1.0f - progress * progress).coerceAtLeast(0.05f)
+                        val qBrakeSpeed = quantize(brake * internalPlaybackSpeed)
+                        if (qBrakeSpeed != lastOutgoingSpeed) {
+                            outgoingPlayer?.setRate(qBrakeSpeed)
+                            lastOutgoingSpeed = qBrakeSpeed
+                        }
+
+                        if (progress < 0.65f) {
+                            val fadeOutVolume = (targetVolume * (1.0f - progress * 0.4f)).toInt()
+                            currentPlayer?.setFadeVolume(fadeOutVolume)
+                            nextPlayer.setFadeVolume(0)
+                        } else {
+                            currentPlayer?.setFadeVolume(0)
+                            nextPlayer.setFadeVolume(targetVolume)
+                        }
+                    }
+
+                    DjTransitionStyle.SMOOTH_CROSSFADE, DjTransitionStyle.SMART_AI -> {
+                        val angle = progress * Math.PI / 2.0
+                        val fadeOutVolume = (targetVolume * kotlin.math.cos(angle)).toInt()
+                        currentPlayer?.setFadeVolume(fadeOutVolume)
+
+                        val fadeInVolume = (targetVolume * kotlin.math.sin(angle)).toInt()
+                        nextPlayer.setFadeVolume(fadeInVolume)
+
+                        if (sweepOutgoing || sweepIncoming) {
+                            val filterProgress = sigmoid(progress)
+                            if (sweepOutgoing) {
+                                outgoingPlayer?.setCrossfadeCutoffHz(
+                                    MpvCrossfadeFilter.LOW_PASS,
+                                    exponentialInterpolate(LPF_START_HZ, LPF_END_HZ, filterProgress),
+                                )
+                            }
+                            if (sweepIncoming) {
+                                nextPlayer.setCrossfadeCutoffHz(
+                                    MpvCrossfadeFilter.HIGH_PASS,
+                                    exponentialInterpolate(HPF_START_HZ, HPF_END_HZ, filterProgress),
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -1774,7 +1928,7 @@ class MpvPlayerAdapter(
                 // Front-loaded ramp: speed/pitch reach target within the first [BPM_RAMP_PORTION]
                 // of the crossfade and then HOLD, so the bulk of the audible blend plays at matched
                 // BPM instead of catching up only when the outgoing volume is already 0.
-                if (rampSpeed) {
+                if (rampSpeed && style != DjTransitionStyle.VINYL_BRAKE) {
                     val linearRamp = (progress / BPM_RAMP_PORTION).coerceAtMost(1f)
                     // Smoothstep S-curve: slow→fast→slow (3t²−2t³)
                     val rampProgress = linearRamp * linearRamp * (3f - 2f * linearRamp)
@@ -1891,75 +2045,96 @@ class MpvPlayerAdapter(
         }
     }
 
-    private fun getAutoTargetDurationMs(bpm: Int): Double {
-        val clampedBpm = bpm.coerceIn(70, 170)
-        return 30000.0 - (clampedBpm - 70) * 230.0
-    }
-
-    private fun resolveAutoCrossfadeDurationMs(
+    /**
+     * Resolves the effective DJ transition style based on FlowFusion and DJtransGAN archetype matrix.
+     * Evaluates tempo gap and Camelot harmonic key compatibility.
+     *
+     * Reference:
+     * - FlowFusion (UCLA DSU): https://github.com/the-data-science-union/DSU-W2025-FlowFusion-Automated-Song-Transitions
+     * - DJtransGAN (ICASSP 2022): https://github.com/ChenPaulYu/DJtransGAN
+     */
+    private fun resolveEffectiveTransitionStyle(
         currentVideoId: String,
         nextVideoId: String,
-    ): Int {
-        val currentBpm = audioMetaCache[currentVideoId]?.bpm
-        val nextBpm = audioMetaCache[nextVideoId]?.bpm
-        if (currentBpm == null || nextBpm == null) return AUTO_FALLBACK_DURATION_MS
-        if (currentBpm <= 0 || nextBpm <= 0) return AUTO_FALLBACK_DURATION_MS
+        isManualSkip: Boolean = false,
+    ): DjTransitionStyle {
+        if (isManualSkip) {
+            return DjTransitionStyle.VINYL_BRAKE
+        }
+        if (djTransitionStyle != DjTransitionStyle.SMART_AI) {
+            return djTransitionStyle
+        }
 
-        val beatMs = 60_000.0 / currentBpm
-        val baseTargetMs = getAutoTargetDurationMs(currentBpm)
+        val currentMeta = audioMetaCache[currentVideoId]
+        val nextMeta = audioMetaCache[nextVideoId]
+        val currentBpm = currentMeta?.bpm
+        val nextBpm = nextMeta?.bpm
 
-        val bpmGapFactor = calculateBpmGapDurationFactor(currentBpm, nextBpm)
-        val keyGapFactor = calculateKeyGapDurationFactor(currentVideoId, nextVideoId)
-        val adjustedTargetMs = baseTargetMs * bpmGapFactor * keyGapFactor
+        if (currentBpm == null || nextBpm == null || currentBpm <= 0 || nextBpm <= 0) {
+            return DjTransitionStyle.BASS_SWAP
+        }
 
-        val bestBeatCount =
-            BEAT_COUNT_OPTIONS.minByOrNull { abs(it * beatMs - adjustedTargetMs) }
-                ?: DEFAULT_BEAT_COUNT
-        val duration = (bestBeatCount * beatMs).toInt()
-
-        Logger.d(
-            TAG,
-            "AutoMix duration: bpm=$currentBpm→$nextBpm, base=${baseTargetMs.toInt()}ms, " +
-                "bpmGap=${"%.2f".format(bpmGapFactor)}, keyGap=${"%.2f".format(keyGapFactor)}, " +
-                "adjusted=${adjustedTargetMs.toInt()}ms, beats=$bestBeatCount, final=${duration}ms",
-        )
-
-        return duration.coerceIn(AUTO_MIN_DURATION_MS, AUTO_MAX_DURATION_MS)
-    }
-
-    private fun calculateBpmGapDurationFactor(
-        currentBpm: Int,
-        nextBpm: Int,
-    ): Double {
-        if (currentBpm <= 0 || nextBpm <= 0) return 1.0
         var ratio = nextBpm.toDouble() / currentBpm.toDouble()
         while (ratio > 1.5) ratio /= 2.0
         while (ratio < 0.67) ratio *= 2.0
-        val gapPercent = abs(1.0 - ratio)
-        return 1.0 + gapPercent * BPM_GAP_DURATION_SCALE
+        val bpmGapPercent = abs(1.0 - ratio)
+
+        val currentKey = currentMeta.key
+        val nextKey = nextMeta.key
+        val currentCamelot = if (currentKey != null) keyToCamelot(currentKey, currentMeta.keyScale) else null
+        val nextCamelot = if (nextKey != null) keyToCamelot(nextKey, nextMeta.keyScale) else null
+        val camelotDist = if (currentCamelot != null && nextCamelot != null) {
+            camelotDistance(currentCamelot, nextCamelot)
+        } else {
+            1
+        }
+
+        val style = when {
+            bpmGapPercent > 0.16 || camelotDist >= 5 -> DjTransitionStyle.VINYL_BRAKE
+            bpmGapPercent > 0.08 || camelotDist >= 3 -> DjTransitionStyle.FILTER_SWEEP
+            else -> DjTransitionStyle.BASS_SWAP
+        }
+
+        Logger.d(
+            TAG,
+            "resolveEffectiveTransitionStyle -> $style (bpmGap=${"%.1f".format(bpmGapPercent * 100)}%, camelotDist=$camelotDist)",
+        )
+        return style
     }
 
-    private fun calculateKeyGapDurationFactor(
+    /**
+     * Resolves phrase-locked transition duration based on musical beat boundaries (FlowFusion).
+     * Locks transitions to 16 beats (4 bars), 8 beats (2 bars), or 4 beats (1 bar) based on archetype.
+     */
+    private fun resolveAutoCrossfadeDurationMs(
         currentVideoId: String,
         nextVideoId: String,
-    ): Double {
-        val currentMeta = audioMetaCache[currentVideoId]
-        val nextMeta = audioMetaCache[nextVideoId]
-        val currentKey = currentMeta?.key ?: return UNKNOWN_GAP_DEFAULT_FACTOR
-        val nextKey = nextMeta?.key ?: return UNKNOWN_GAP_DEFAULT_FACTOR
+        style: DjTransitionStyle = DjTransitionStyle.BASS_SWAP,
+    ): Int {
+        val currentBpm = audioMetaCache[currentVideoId]?.bpm ?: DEFAULT_TEMPO_BPM
+        val safeBpm = if (currentBpm in 60..220) currentBpm else DEFAULT_TEMPO_BPM
+        val beatMs = 60_000.0 / safeBpm
 
-        // An unparseable key tells us nothing about compatibility — treat it like a missing
-        // key instead of like a perfect match, otherwise it silently shortens the blend.
-        val currentCamelot = keyToCamelot(currentKey, currentMeta.keyScale) ?: return UNKNOWN_GAP_DEFAULT_FACTOR
-        val nextCamelot = keyToCamelot(nextKey, nextMeta.keyScale) ?: return UNKNOWN_GAP_DEFAULT_FACTOR
-
-        val dist = camelotDistance(currentCamelot, nextCamelot)
-        return when {
-            dist <= 1 -> 1.0
-            dist == 2 -> 1.1
-            dist <= 4 -> 1.25
-            else -> 1.4
+        val duration = when (style) {
+            DjTransitionStyle.BASS_SWAP, DjTransitionStyle.SMOOTH_CROSSFADE -> {
+                (PHRASE_BEATS_BASS_SWAP * beatMs).toInt().coerceIn(4000, 12000)
+            }
+            DjTransitionStyle.FILTER_SWEEP -> {
+                (PHRASE_BEATS_FILTER_SWEEP * beatMs).toInt().coerceIn(2500, 6000)
+            }
+            DjTransitionStyle.VINYL_BRAKE -> {
+                (PHRASE_BEATS_VINYL_BRAKE * beatMs).toInt().coerceIn(1500, 3500)
+            }
+            DjTransitionStyle.SMART_AI -> {
+                (PHRASE_BEATS_BASS_SWAP * beatMs).toInt().coerceIn(4000, 10000)
+            }
         }
+
+        Logger.d(
+            TAG,
+            "resolveAutoCrossfadeDurationMs: style=$style, bpm=$safeBpm, beatMs=${beatMs.toInt()}ms -> duration=${duration}ms",
+        )
+        return duration
     }
 
     // ========== Camelot Wheel ==========
@@ -2012,14 +2187,6 @@ class MpvPlayerAdapter(
     }
 
     companion object {
-        private const val AUTO_FALLBACK_DURATION_MS = 30000
-        private const val AUTO_MIN_DURATION_MS = 20000
-        private const val AUTO_MAX_DURATION_MS = 45000
-        private val BEAT_COUNT_OPTIONS = intArrayOf(8, 16, 24, 32, 40, 48, 64, 80, 96)
-        private const val DEFAULT_BEAT_COUNT = 32
-        private const val BPM_GAP_DURATION_SCALE = 2.0
-        private const val UNKNOWN_GAP_DEFAULT_FACTOR = 1.25
-
         // DJ crossfade sigmoid steepness (higher = sharper S-curve transition)
         private const val DJ_FILTER_SIGMOID_K = 6f
 
@@ -2029,8 +2196,27 @@ class MpvPlayerAdapter(
         private const val HPF_START_HZ = 2000f // High-pass starts lower — incoming track fills in faster
         private const val HPF_END_HZ = 20f // High-pass ends wide open
 
+        // DJtransGAN EQ anchors (https://github.com/ChenPaulYu/DJtransGAN)
+        private const val DJ_BASS_KILL_HZ = 350f // Cut incoming sub-bass during intro phrase
+        private const val DJ_DROP_LPF_CUT_HZ = 180f // Cut outgoing bass on downbeat swap
+
+        // FlowFusion musical phrasing in beats (https://github.com/the-data-science-union/DSU-W2025-FlowFusion-Automated-Song-Transitions)
+        private const val PHRASE_BEATS_BASS_SWAP = 16 // 4 bars
+        private const val PHRASE_BEATS_FILTER_SWEEP = 8 // 2 bars
+        private const val PHRASE_BEATS_VINYL_BRAKE = 4 // 1 bar
+        private const val DEFAULT_TEMPO_BPM = 120
+
+        // AutoMix constants
+        private const val AUTO_FALLBACK_DURATION_MS = 8000 // Default 16-beat phrase at 120 BPM
+        private const val AUTO_MIN_DURATION_MS = 1500
+        private const val AUTO_MAX_DURATION_MS = 12000
+        private val BEAT_COUNT_OPTIONS = intArrayOf(4, 8, 16, 24, 32)
+        private const val DEFAULT_BEAT_COUNT = 16
         private const val BPM_RATIO_MIN = 0.75f // Max 25% slower
         private const val BPM_RATIO_MAX = 1.25f // Max 25% faster
+
+        private const val BPM_GAP_DURATION_SCALE = 2.0
+        private const val UNKNOWN_GAP_DEFAULT_FACTOR = 1.25
 
         // Quantization step for the speed/pitch ramp. On Android this keeps SonicAudioProcessor
         // from popping on micro-adjustments; here it keeps us from issuing 50 near-identical
@@ -2041,7 +2227,7 @@ class MpvPlayerAdapter(
         // Outgoing tempo reaches target within the first [BPM_RAMP_PORTION] of the
         // crossfade (smoothstep S-curve) and then holds for the remainder.
         // Must stay > 0 — the ramp divides by it.
-        private const val BPM_RAMP_PORTION = 0.6f
+        private const val BPM_RAMP_PORTION = 0.4f
 
         /**
          * mpv's neutral `pitch-scale`. The desktop backend exposes no user pitch control (see
@@ -2264,12 +2450,19 @@ class MpvPlayerAdapter(
                                     if (dur > 0 && pos > 0) {
                                         val timeRemaining = dur - pos
                                         val nextVideoId = playlist.getOrNull(getNextMediaItemIndex())?.mediaId
+                                        val currentVideoId = playlist.getOrNull(localCurrentMediaItemIndex)?.mediaId ?: ""
                                         val isPrecached = nextVideoId != null && precachedPlayers.containsKey(nextVideoId)
                                         val preparationBufferMs = if (isPrecached) 0L else 3000L
+
+                                        if (timeRemaining in 1L..30000L) {
+                                            loadAudioMetaIfNeeded(currentVideoId)
+                                            if (nextVideoId != null) loadAudioMetaIfNeeded(nextVideoId)
+                                        }
+
+                                        val effectiveStyle = resolveEffectiveTransitionStyle(currentVideoId, nextVideoId ?: "")
                                         val resolvedDurationMs =
-                                            if (crossfadeDurationMs == DataStoreManager.CROSSFADE_DURATION_AUTO) {
-                                                val currentVideoId = playlist.getOrNull(localCurrentMediaItemIndex)?.mediaId ?: ""
-                                                resolveAutoCrossfadeDurationMs(currentVideoId, nextVideoId ?: "")
+                                            if (crossfadeDurationMs == DataStoreManager.CROSSFADE_DURATION_AUTO || djCrossfadeEnabled) {
+                                                resolveAutoCrossfadeDurationMs(currentVideoId, nextVideoId ?: "", effectiveStyle)
                                             } else {
                                                 crossfadeDurationMs
                                             }

@@ -3,6 +3,7 @@ package com.maxrave.data.dataStore
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -1274,6 +1275,84 @@ internal class DataStoreManagerImpl(
         }
     }
 
+    override val djTransitionStyle: Flow<String> =
+        settingsDataStore.data.map { preferences ->
+            preferences[DJ_TRANSITION_STYLE] ?: DataStoreManager.DJ_TRANSITION_STYLE_SMART_AI
+        }
+
+    override suspend fun setDjTransitionStyle(style: String) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[DJ_TRANSITION_STYLE] = style
+            }
+        }
+    }
+
+    override val djBpmMatching: Flow<String> =
+        settingsDataStore.data.map { preferences ->
+            preferences[DJ_BPM_MATCHING] ?: TRUE
+        }
+
+    override suspend fun setDjBpmMatching(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[DJ_BPM_MATCHING] = if (enabled) TRUE else FALSE
+            }
+        }
+    }
+
+    override val djTransitionOnSkip: Flow<String> =
+        settingsDataStore.data.map { preferences ->
+            preferences[DJ_TRANSITION_ON_SKIP] ?: TRUE
+        }
+
+    override suspend fun setDjTransitionOnSkip(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[DJ_TRANSITION_ON_SKIP] = if (enabled) TRUE else FALSE
+            }
+        }
+    }
+
+    override val floatingSurfaceStyle: Flow<String> =
+        settingsDataStore.data.map { preferences ->
+            preferences[FLOATING_SURFACE_STYLE] ?: "DYNAMIC_BLUR"
+        }
+
+    override suspend fun setFloatingSurfaceStyle(style: String) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[FLOATING_SURFACE_STYLE] = style
+            }
+        }
+    }
+
+    override val performanceMode: Flow<Boolean> =
+        settingsDataStore.data.map { preferences ->
+            preferences[PERFORMANCE_MODE] ?: false
+        }
+
+    override suspend fun setPerformanceMode(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[PERFORMANCE_MODE] = enabled
+            }
+        }
+    }
+
+    override val contentTypeMode: Flow<String> =
+        settingsDataStore.data.map { preferences ->
+            preferences[CONTENT_TYPE_MODE] ?: DataStoreManager.CONTENT_TYPE_SONG
+        }
+
+    override suspend fun setContentTypeMode(mode: String) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[CONTENT_TYPE_MODE] = mode
+            }
+        }
+    }
+
     override val youtubeSubtitleLanguage =
         settingsDataStore.data.map { preferences ->
             val languageValue = language.first()
@@ -1653,6 +1732,12 @@ internal class DataStoreManagerImpl(
         val CROSSFADE_ENABLED = stringPreferencesKey("crossfade_enabled")
         val CROSSFADE_DURATION = intPreferencesKey("crossfade_duration")
         val CROSSFADE_DJ_MODE = stringPreferencesKey("crossfade_dj_mode")
+        val DJ_TRANSITION_STYLE = stringPreferencesKey("dj_transition_style")
+        val DJ_BPM_MATCHING = stringPreferencesKey("dj_bpm_matching")
+        val DJ_TRANSITION_ON_SKIP = stringPreferencesKey("dj_transition_on_skip")
+        val FLOATING_SURFACE_STYLE = stringPreferencesKey("floating_surface_style")
+        val PERFORMANCE_MODE = booleanPreferencesKey("performance_mode")
+        val CONTENT_TYPE_MODE = stringPreferencesKey("content_type_mode")
         val LYRICS_PROVIDER = stringPreferencesKey("lyrics_provider")
         val TRANSLATION_LANGUAGE = stringPreferencesKey("translation_language")
         val USE_TRANSLATION_LANGUAGE = stringPreferencesKey("use_translation_language")

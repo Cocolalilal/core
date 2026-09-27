@@ -6,6 +6,7 @@ package com.maxrave.domain.data.player
 data class GenericCastState(
     val isRemote: Boolean = false,
     val deviceName: String? = null,
+    val deviceType: RemoteDeviceType = RemoteDeviceType.CAST,
 ) {
     companion object {
         val NOT_CASTING = GenericCastState()
