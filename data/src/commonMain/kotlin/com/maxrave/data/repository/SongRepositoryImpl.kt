@@ -419,4 +419,10 @@ internal class SongRepositoryImpl(
         }.flowOn(Dispatchers.IO)
 
     override suspend fun getCounterpart(track: Track, preferSong: Boolean): Track? = null
+
+    override suspend fun getLikeTargetId(track: Track): String =
+        getCounterpart(track, preferSong = true)?.videoId ?: track.videoId
+
+    override suspend fun getSongCounterpartForVideo(track: Track): Track? =
+        getCounterpart(track, preferSong = true)?.takeIf { it.videoId != track.videoId }
 }

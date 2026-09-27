@@ -91,6 +91,23 @@ suspend fun <T> Flow<LocalResource<T>>.collectLatestResource(
     }
 }
 
+/**
+ * [Resource] counterpart of the [LocalResource] collector above. [Resource] has
+ * no Loading state, so [onLoading] is accepted for call-site symmetry but never
+ * invoked.
+ */
+@JvmName("collectLatestResourceFromResource")
+suspend fun <T> Flow<Resource<T>>.collectLatestResource(
+    onSuccess: (T?) -> Unit,
+    onError: (String) -> Unit = {},
+    onLoading: () -> Unit = {},
+) = this.collectLatest { resource ->
+    when (resource) {
+        is Resource.Success -> onSuccess(resource.data)
+        is Resource.Error -> onError(resource.message ?: "Error in collectLatestResource")
+    }
+}
+
 suspend fun Flow<NoResponseResource>.collectLatestNoResponseResource(
     onSuccess: () -> Unit,
     onError: (String) -> Unit = {},

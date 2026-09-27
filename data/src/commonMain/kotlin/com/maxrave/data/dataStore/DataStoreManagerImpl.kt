@@ -15,6 +15,7 @@ import com.maxrave.domain.data.model.network.ProxyConfiguration
 import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.manager.DataStoreManager.Values.AI_PROVIDER_GEMINI
 import com.maxrave.domain.manager.DataStoreManager.Values.FALSE
+import com.maxrave.domain.manager.DataStoreManager.Values.FLOATING_SURFACE_GLASSY
 import com.maxrave.domain.manager.DataStoreManager.Values.GITHUB
 import com.maxrave.domain.manager.DataStoreManager.Values.LOCAL_PLAYLIST_FILTER_OLDER_FIRST
 import com.maxrave.domain.manager.DataStoreManager.Values.PROXY_TYPE_HTTP
@@ -1316,7 +1317,7 @@ internal class DataStoreManagerImpl(
 
     override val floatingSurfaceStyle: Flow<String> =
         settingsDataStore.data.map { preferences ->
-            preferences[FLOATING_SURFACE_STYLE] ?: "DYNAMIC_BLUR"
+            preferences[FLOATING_SURFACE_STYLE] ?: FLOATING_SURFACE_GLASSY
         }
 
     override suspend fun setFloatingSurfaceStyle(style: String) {
@@ -1349,6 +1350,22 @@ internal class DataStoreManagerImpl(
         withContext(Dispatchers.IO) {
             settingsDataStore.edit { settings ->
                 settings[CONTENT_TYPE_MODE] = mode
+            }
+        }
+    }
+
+    override fun getPlaylistTag(playlistId: String): Flow<String?> =
+        settingsDataStore.data.map { preferences ->
+            preferences[stringPreferencesKey("playlist_tag_$playlistId")]
+        }
+
+    override suspend fun setPlaylistTag(
+        playlistId: String,
+        tag: String,
+    ) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[stringPreferencesKey("playlist_tag_$playlistId")] = tag
             }
         }
     }

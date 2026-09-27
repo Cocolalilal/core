@@ -112,4 +112,17 @@ interface SongRepository {
     fun sendFeedback(feedbackTokens: List<String>): Flow<Resource<String>>
 
     suspend fun getCounterpart(track: Track, preferSong: Boolean): Track?
+
+    /**
+     * Video id that a like on [track] should be persisted under. Videos resolve
+     * to their attached song counterpart when one exists, otherwise the track's
+     * own id.
+     */
+    suspend fun getLikeTargetId(track: Track): String
+
+    /**
+     * Song counterpart for a video [track], used by the Liked Songs
+     * All/Songs substitution. Null when none exists (or the track is not a video).
+     */
+    suspend fun getSongCounterpartForVideo(track: Track): Track?
 }

@@ -354,6 +354,17 @@ interface DataStoreManager {
 
     suspend fun setContentTypeMode(mode: String)
 
+    /**
+     * Remembered All/Songs/Videos filter per playlist id, so reopening a
+     * playlist restores the filter the user left it on. Null when never set.
+     */
+    fun getPlaylistTag(playlistId: String): Flow<String?>
+
+    suspend fun setPlaylistTag(
+        playlistId: String,
+        tag: String,
+    )
+
     val youtubeSubtitleLanguage: Flow<String>
 
     suspend fun setYoutubeSubtitleLanguage(language: String)
@@ -497,6 +508,14 @@ interface DataStoreManager {
 
          const val CONTENT_TYPE_SONG = "song"
          const val CONTENT_TYPE_VIDEO = "video"
+
+        const val FLOATING_SURFACE_GLASSY = "GLASSY"
+        const val FLOATING_SURFACE_LASTCHAT = "LASTCHAT"
+        const val FLOATING_SURFACE_LASTCHAT_BLUR = "LASTCHAT_BLUR"
+
+        const val PLAYLIST_TAG_ALL = "ALL"
+        const val PLAYLIST_TAG_SONGS = "SONGS"
+        const val PLAYLIST_TAG_VIDEOS = "VIDEOS"
 
         const val PROXY_TYPE_HTTP = "http"
         const val PROXY_TYPE_SOCKS = "socks"

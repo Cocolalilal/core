@@ -8,7 +8,9 @@ import com.maxrave.domain.data.player.GenericCastState
 import com.maxrave.domain.data.player.GenericCommandButton
 import com.maxrave.domain.data.player.GenericMediaItem
 import com.maxrave.domain.data.player.PlayerError
+import com.maxrave.domain.data.player.SonosDevice
 import com.maxrave.domain.mediaservice.player.MediaPlayerInterface
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -29,6 +31,27 @@ interface MediaPlayerHandler {
     val format: StateFlow<NewFormatEntity?>
     val currentSongIndex: StateFlow<Int>
     val castState: StateFlow<GenericCastState>
+
+    /**
+     * Sonos remote speakers. Defaults report "unsupported" (empty list, no-ops);
+     * handlers with a [com.maxrave.domain.mediaservice.sonos.SonosController]
+     * available override these and delegate to it.
+     */
+    val sonosDevices: StateFlow<List<SonosDevice>> get() = MutableStateFlow(emptyList())
+    val isSonosScanning: StateFlow<Boolean> get() = MutableStateFlow(false)
+    val sonosVolume: StateFlow<Float> get() = MutableStateFlow(1f)
+
+    fun startSonosDiscovery() {}
+
+    fun stopSonosDiscovery() {}
+
+    fun refreshSonosDevices() {}
+
+    fun connectSonos(device: SonosDevice) {}
+
+    fun disconnectSonos() {}
+
+    fun setSonosVolume(volume: Float) {}
 
     // Listeners
     var onUpdateNotification: (List<GenericCommandButton>) -> Unit
