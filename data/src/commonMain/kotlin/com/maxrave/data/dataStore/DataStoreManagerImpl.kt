@@ -1753,7 +1753,11 @@ internal class DataStoreManagerImpl(
         val DJ_BPM_MATCHING = stringPreferencesKey("dj_bpm_matching")
         val DJ_TRANSITION_ON_SKIP = stringPreferencesKey("dj_transition_on_skip")
         val FLOATING_SURFACE_STYLE = stringPreferencesKey("floating_surface_style")
-        val PERFORMANCE_MODE = booleanPreferencesKey("performance_mode")
+        // v2: dev builds briefly stored this same name as a String ("TRUE"/"FALSE").
+        // Preferences Key equality is name-based, so reading that legacy entry
+        // with a boolean key throws ClassCastException and kills the app on
+        // startup. A fresh name orphans the legacy entry (never read again).
+        val PERFORMANCE_MODE = booleanPreferencesKey("performance_mode_v2")
         val CONTENT_TYPE_MODE = stringPreferencesKey("content_type_mode")
         val LYRICS_PROVIDER = stringPreferencesKey("lyrics_provider")
         val TRANSLATION_LANGUAGE = stringPreferencesKey("translation_language")
